@@ -39,6 +39,33 @@ import ExamWorkspace from "./components/ExamWorkspace";
 import StudyWorkspace from "./components/StudyWorkspace";
 import ComputerTestSession from "./components/ComputerTestSession";
 import ComputerWriting from "./components/ComputerWriting";
+import { matchesTestTrack } from "./lib/test-track.mjs";
+
+type TrackChoice = "general" | "academic" | "all";
+const trackNames = {
+  general: "G 类 · 培训类",
+  academic: "A 类 · 学术类",
+  shared: "A / G 通用",
+  unclassified: "类别待确认",
+};
+function initialTrack(): TrackChoice {
+  try {
+    const saved = localStorage.getItem("ielts-lab-test-track");
+    if (["general", "academic", "all"].includes(saved || ""))
+      return saved as TrackChoice;
+  } catch {
+    /* use the requested G direction when preferences are unavailable */
+  }
+  return "general";
+}
+function MaterialLabels({ item }: { item: LibraryItem }) {
+  return (
+    <span className="material-labels">
+      <span>{trackNames[item.testTrack || "unclassified"]}</span>
+      {item.source === "original" && <span>原创练习 · 非官方真题</span>}
+    </span>
+  );
+}
 
 const kinds: {
   id: Kind;
@@ -130,6 +157,30 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [item, setItem] = useState<StudyItem | null>(null);
   const [itemError, setItemError] = useState("");
+  const [testTrack, setTestTrack] = useState<TrackChoice>(initialTrack);
+  const selectTrack = (next: TrackChoice) => {
+    setTestTrack(next);
+    setSearch("");
+    try {
+      localStorage.setItem("ielts-lab-test-track", next);
+    } catch {
+      /* session preference still works */
+    }
+  };
+  const scopedLibrary = useMemo(() => {
+    if (!library) return null;
+    const items = library.items.filter((entry) =>
+      matchesTestTrack(entry, testTrack),
+    );
+    const counts: Library["counts"] = {};
+    items.forEach((entry) => {
+      counts[entry.kind] = (counts[entry.kind] || 0) + 1;
+    });
+    return { ...library, items, counts };
+  }, [library, testTrack]);
+  const lastAttempt = progress.attempts.find((attempt) =>
+    scopedLibrary?.items.some((entry) => entry.id === attempt.itemId),
+  );
   const computerMode = route.startsWith("/exam/");
   const itemId =
     route.startsWith("/item/") || computerMode
@@ -283,7 +334,9 @@ export default function App() {
             >
               <k.icon size={18} />
               <span>{k.name}</span>
-              <span className="nav-count">{library?.counts?.[k.id] || 0}</span>
+              <span className="nav-count">
+                {scopedLibrary?.counts?.[k.id] || 0}
+              </span>
             </a>
           ))}
           <div className="nav-label">我的学习</div>
@@ -341,6 +394,20 @@ export default function App() {
             <span>{title}</span>
           </div>
           <div className="topbar-right">
+            {!itemId && ["home", "library", "bookmarks"].includes(section) && (
+              <label className="track-picker">
+                <span>备考类型</span>
+                <select
+                  aria-label="备考类型"
+                  value={testTrack}
+                  onChange={(e) => selectTrack(e.target.value as TrackChoice)}
+                >
+                  <option value="general">G 类 · General Training</option>
+                  <option value="academic">A 类 · Academic</option>
+                  <option value="all">全部资料（含待确认）</option>
+                </select>
+              </label>
+            )}
             <span className="local-badge">
               {library?.mode === "archive" ? "个人资料库" : "示例模式"}
             </span>
@@ -355,6 +422,15 @@ export default function App() {
           </div>
         )}
         <main className={itemId ? "workspace-main" : "page-main"}>
+          {library &&
+            !itemId &&
+            ["home", "library", "bookmarks"].includes(section) && (
+              <TrackGuide
+                library={library}
+                choice={testTrack}
+                onShowAll={() => selectTrack("all")}
+              />
+            )}
           {error ? (
             <div className="empty">
               <h2>{error}</h2>
@@ -381,6 +457,7 @@ export default function App() {
                     <div>
                       <span className="muted">{item.collection}</span>
                       <h1>{item.title}</h1>
+                      <MaterialLabels item={item} />
                     </div>
                     <button
                       className={
@@ -451,7 +528,7 @@ export default function App() {
                     })}
                   </p>
                   <h1>自己的节奏，扎实地练习。</h1>
-                  <p>从一套题开始，把答案、原文和错题放在一起。</p>
+                  <p>从一份材料开始，把答案、原文和错题放在一起。</p>
                 </div>
                 <button
                   className="button secondary"
@@ -463,27 +540,27 @@ export default function App() {
               </div>
               <div className="overview-stats">
                 <div>
-                  <span>已练材料</span>
+                  <span>全部类型已练材料</span>
                   <strong>
                     {stats.finished}
                     <small>份</small>
                   </strong>
                 </div>
                 <div>
-                  <span>累计练习</span>
+                  <span>全部累计练习</span>
                   <strong>
                     {stats.minutes}
                     <small>分钟</small>
                   </strong>
                 </div>
                 <div>
-                  <span>客观题正确率</span>
+                  <span>全部客观题正确率</span>
                   <strong>
                     {stats.accuracy === null ? "—" : stats.accuracy + "%"}
                   </strong>
                 </div>
                 <div>
-                  <span>收藏材料</span>
+                  <span>全部收藏材料</span>
                   <strong>
                     {progress.bookmarks.length}
                     <small>份</small>
@@ -516,7 +593,7 @@ export default function App() {
                           }
                         </p>
                         <span>
-                          {library.counts[k.id] || 0} 份材料{" "}
+                          {scopedLibrary?.counts[k.id] || 0} 份材料{" "}
                           <ArrowRight size={16} />
                         </span>
                       </button>
@@ -528,21 +605,18 @@ export default function App() {
                     <h2>继续学习</h2>
                     <Clock3 size={18} />
                   </div>
-                  {progress.attempts.length ? (
+                  {lastAttempt ? (
                     <>
-                      <span className="tag">
-                        {label(progress.attempts[0].kind)}
-                      </span>
-                      <h3>{progress.attempts[0].title}</h3>
+                      <span className="tag">{label(lastAttempt.kind)}</span>
+                      <h3>{lastAttempt.title}</h3>
                       <p className="muted">
-                        上次练习：{date(progress.attempts[0].createdAt)}
+                        上次练习：{date(lastAttempt.createdAt)}
                       </p>
                       <button
                         className="button"
                         onClick={() =>
                           navigate(
-                            "/item/" +
-                              encodeURIComponent(progress.attempts[0].itemId),
+                            "/item/" + encodeURIComponent(lastAttempt.itemId),
                           )
                         }
                       >
@@ -582,7 +656,7 @@ export default function App() {
                       <k.icon size={21} />
                       <div>
                         <strong>{k.name}</strong>
-                        <small>{library.counts[k.id] || 0} 份材料</small>
+                        <small>{scopedLibrary?.counts[k.id] || 0} 份材料</small>
                       </div>
                       <ChevronRight size={16} />
                     </button>
@@ -607,7 +681,8 @@ export default function App() {
             </>
           ) : section === "library" || section === "bookmarks" ? (
             <Catalog
-              library={library}
+              key={testTrack + ":" + kind + ":" + section}
+              library={scopedLibrary || library}
               kind={section === "library" ? kind : undefined}
               bookmarksOnly={section === "bookmarks"}
               search={search}
@@ -632,6 +707,66 @@ export default function App() {
         )}
       </div>
     </div>
+  );
+}
+
+function TrackGuide({
+  library,
+  choice,
+  onShowAll,
+}: {
+  library: Library;
+  choice: TrackChoice;
+  onShowAll: () => void;
+}) {
+  const unknown = library.items.filter(
+    (entry) =>
+      (!entry.testTrack || entry.testTrack === "unclassified") &&
+      ["reading", "writing"].includes(entry.kind),
+  ).length;
+  const selected = library.items.filter((entry) => entry.testTrack === choice);
+  const archived = selected.filter(
+    (entry) => entry.source === "archive",
+  ).length;
+  const original = selected.filter(
+    (entry) => entry.source === "original",
+  ).length;
+  return (
+    <section className="track-guide" aria-label="备考类型说明">
+      <div>
+        <strong>{choice === "all" ? "全部资料" : trackNames[choice]}</strong>
+        <p>
+          {choice === "general"
+            ? "阅读侧重生活和职场场景；写作 Task 1 练书信，Task 2 练议论文。听力和口语与 A 类共用。"
+            : choice === "academic"
+              ? "阅读偏学术题材；写作 Task 1 描述图表、地图或流程，Task 2 练议论文。听力和口语与 G 类共用。"
+              : "这里保留全部归档、原创练习与类别待确认的材料。切换备考类型只筛选目录，不会删除作答和收藏。"}
+        </p>
+        {choice !== "all" && (
+          <p className="track-inventory">
+            本类专属：{archived} 份归档 · {original}{" "}
+            份原创练习；另包含通用听说与基础材料。
+            {unknown > 0 && (
+              <>
+                {" "}
+                还有 {unknown} 份读写材料类别待确认，
+                <button className="text-button" onClick={onShowAll}>
+                  查看全部资料
+                </button>
+                。
+              </>
+            )}
+          </p>
+        )}
+      </div>
+      <a
+        href="https://ielts.org/take-a-test/preparation-resources/sample-test-questions/general-training-test"
+        target="_blank"
+        rel="noreferrer"
+      >
+        官方 G 类样题
+      </a>
+    </section>
   );
 }
 
@@ -798,6 +933,7 @@ function Catalog({
                       </span>
                     )}
                   </span>
+                  <MaterialLabels item={i} />
                 </button>
                 <button
                   className={
@@ -947,7 +1083,9 @@ function SettingsView({ library }: { library: Library }) {
         <div className="settings-line">
           <span>材料来源</span>
           <strong>
-            {library.mode === "archive" ? "本地个人归档" : "应用自带的原创示例"}
+            {library.mode === "archive"
+              ? "本地个人归档 + 原创练习"
+              : "应用自带的原创示例"}
           </strong>
         </div>
         <div className="settings-line">

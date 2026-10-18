@@ -804,3 +804,16 @@
     margin-top: 0;
   }
 }
+.computer-writing .cw-track-note {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+.computer-writing .cw-source-label {
+  font-size: 11px;
+  border: 1px solid currentColor;
+  padding: 2px 7px;
+  font-weight: 400;
+}

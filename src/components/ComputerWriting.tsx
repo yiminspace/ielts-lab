@@ -138,6 +138,22 @@ function ComputerWritingSession({
   const optionsRef = useRef<HTMLElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
   const part = Number(item.data?.writingPart) === 1 ? 1 : 2;
+  const trackLabel =
+    item.testTrack === "general"
+      ? "General Training"
+      : item.testTrack === "academic"
+        ? "Academic"
+        : item.testTrack === "shared"
+          ? "Academic & General Training"
+          : "Track unclassified";
+  const taskType =
+    part === 2
+      ? "Essay"
+      : item.testTrack === "general"
+        ? "Letter writing"
+        : item.testTrack === "academic"
+          ? "Report on visual information"
+          : "Task 1 response";
   const recommended = part === 1 ? 20 : 40;
   const minimum = part === 1 ? 150 : 250;
   const words = countWords(draft.text);
@@ -176,7 +192,7 @@ function ComputerWritingSession({
   function enqueue<T>(operation: () => T): Promise<T> {
     const run = () =>
       navigator.locks
-        ? navigator.locks.request(`ielts-lab-draft:${key}`, operation)
+        ? navigator.locks.request("ielts-lab-progress-write", operation)
         : Promise.resolve(operation());
     const result = writeQueue.current.catch(() => {}).then(run);
     writeQueue.current = result;
@@ -450,7 +466,9 @@ function ComputerWritingSession({
       </button>
       <div className="cw-identity">
         <strong>Test taker ID</strong>
-        <span>Local practice</span>
+        <span>
+          {trackLabel} · Writing Task {part}
+        </span>
       </div>
       {draft.status === "running" && (
         <div
@@ -524,15 +542,30 @@ function ComputerWritingSession({
             <p className="cw-kicker">Single-task practice</p>
             <h1>Writing familiarisation</h1>
             <h2>{item.title}</h2>
+            <p className="cw-track-note">
+              <strong>
+                {trackLabel} · {taskType}
+              </strong>
+              {item.source === "original" && (
+                <span className="cw-source-label">
+                  Original practice material
+                </span>
+              )}
+            </p>
             <p>
-              This practice contains <strong>Part {part} only</strong>. It is
-              not a complete two-task Writing test.
+              This practice contains <strong>Writing Task {part} only</strong>.
+              It is not a complete two-task Writing test.
             </p>
             <p>
               本次练习只包含当前一道写作题，默认不计时。你可以熟悉题目与答题区、字数统计、笔记和显示设置。
             </p>
             <ul>
-              <li>Write at least {minimum} words.</li>
+              <li>
+                {taskType}. Write at least {minimum} words.
+              </li>
+              <li>
+                Suggested time for Task {part}: {recommended} minutes.
+              </li>
               <li>Your response is saved automatically as you work.</li>
               <li>Use normal keyboard shortcuts to cut, copy and paste.</li>
               <li>
@@ -733,7 +766,9 @@ function ComputerWritingSession({
             </section>
             <div className="cw-columns">
               <section className="cw-prompt" aria-label="Writing task">
-                <h1>Writing Task {part}</h1>
+                <h1>
+                  Writing Task {part} — {taskType}
+                </h1>
                 <RichText html={prompt} />
               </section>
               <section className="cw-answer">

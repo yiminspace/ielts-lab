@@ -6,6 +6,8 @@ import os from "node:os";
 import http from "node:http";
 import { createApp, parseRange, validProgress } from "../server/index.mjs";
 import { loadLibrary, validateArchive } from "../server/library.mjs";
+import { generalTrainingItems } from "../server/general-training.mjs";
+import { importSummary } from "../server/import.mjs";
 
 async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "ielts-lab-test-"));
@@ -72,7 +74,7 @@ async function fixture(t) {
     JSON.stringify({ archiveRoot: archive }),
   );
   t.after(() => fs.rm(root, { recursive: true, force: true }));
-  return { root, archive, mediaRoot, mediaRelative };
+  return { root, archive, organized, mediaRoot, mediaRelative, doc };
 }
 async function running(t, options) {
   const app = await createApp(options);
@@ -86,6 +88,81 @@ async function running(t, options) {
   );
   const url = `http://127.0.0.1:${app.server.address().port}`;
   return { ...app, url };
+}
+
+async function trackFixture(t) {
+  const fixtureData = await fixture(t);
+  const { archive, doc } = fixtureData;
+  const files = [];
+  const requestRows = [];
+  async function response(kind, paperId, rows) {
+    const file = `data/raw/hcp/${String(files.length + 1).padStart(64, "0")}.json`;
+    files.push(file);
+    await fs.mkdir(path.dirname(path.join(archive, file)), { recursive: true });
+    await fs.writeFile(
+      path.join(archive, file),
+      JSON.stringify({ status: 0, content: rows }),
+    );
+    requestRows.push({
+      path: `/hcp/qsBank/${kind === "reading" ? "passages/examPassagesV2" : "writings/examWritingsV2"}`,
+      params: JSON.stringify({ testPaperId: paperId }),
+      file,
+      detail: "private provenance marker must not enter API",
+    });
+  }
+  await doc("模考目录", "学术类", {
+    paperList: [{ testPapers: [{ paperId: "paper-a" }] }],
+  });
+  await doc("模考目录", "培训类", {
+    paperList: [{ testPapers: [{ paperId: "paper-g" }] }],
+  });
+  await doc("阅读", "Cambridge reading A", {
+    passagesId: "reading-a",
+    examType: 0,
+    questions: [],
+  });
+  await doc("阅读", "Cambridge reading G", {
+    passagesId: "reading-g",
+    examType: 1,
+    questions: [],
+  });
+  await doc("阅读", "Cambridge reading missing", {
+    passagesId: "reading-missing",
+    examType: 1,
+    questions: [],
+  });
+  await doc("阅读", "Cambridge reading conflicting", {
+    passagesId: "reading-conflicting",
+    questions: [],
+  });
+  await doc("阅读", "Academic Reading explicit conflict", {
+    passagesId: "reading-explicit",
+    testTrack: "general",
+    questions: [],
+  });
+  await doc("写作", "Cambridge writing A", {
+    writingId: "writing-a",
+    writingPart: 1,
+  });
+  await doc("写作", "Cambridge writing G", {
+    writingId: "writing-g",
+    writingPart: 2,
+  });
+  await response("reading", "paper-a", [
+    { passagesId: "reading-a" },
+    { passagesId: "reading-conflicting" },
+  ]);
+  await response("reading", "paper-g", [
+    { passagesId: "reading-g" },
+    { passagesId: "reading-conflicting" },
+    { passagesId: "reading-explicit" },
+  ]);
+  await response("writing", "paper-a", [{ writingId: "writing-a" }]);
+  await response("writing", "paper-g", [{ writingId: "writing-g" }]);
+  const requestFile = path.join(archive, "data/目录/请求来源.json");
+  await fs.mkdir(path.dirname(requestFile), { recursive: true });
+  await fs.writeFile(requestFile, JSON.stringify(requestRows));
+  return { ...fixtureData, files, requestRows, requestFile };
 }
 function rawRequest(url, route, headers = {}) {
   return new Promise((resolve, reject) => {
@@ -134,7 +211,10 @@ test("demo is original, includes every supported kind, and can be forced over co
     archiveRoot: fixtureData.archive,
   });
   assert.equal(library.mode, "demo");
-  assert.equal(library.publicLibrary.items.length, 10);
+  assert.equal(
+    library.publicLibrary.items.length,
+    10 + generalTrainingItems.length,
+  );
   assert.equal(
     new Set(library.publicLibrary.items.map((item) => item.kind)).size,
     10,
@@ -149,7 +229,11 @@ test("demo is original, includes every supported kind, and can be forced over co
 test("archive indexing allowlists study categories and rewrites local media without exposing identity metadata", async (t) => {
   const { archive } = await fixture(t);
   const library = await loadLibrary({ archiveRoot: archive });
-  assert.equal(library.publicLibrary.items.length, 4);
+  assert.equal(
+    library.publicLibrary.items.filter((item) => item.source === "archive")
+      .length,
+    4,
+  );
   assert.equal(library.publicLibrary.counts.typing, 2);
   assert.ok(
     !library.publicLibrary.items.some(
@@ -171,6 +255,139 @@ test("archive indexing allowlists study categories and rewrites local media with
     library.publicLibrary.items.find((item) => item.kind === "vocabulary").id,
   );
   assert.match(words.data.items[0].audioUrls.bf_emma, /^\/media\//);
+});
+
+test("import totals exclude bundled original lessons and empty archives still fail before configuration is written", async (t) => {
+  const f = await fixture(t);
+  let library = await loadLibrary({ archiveRoot: f.archive });
+  const summary = importSummary(library);
+  assert.equal(summary.count, 4);
+  assert.equal(summary.counts.typing, 2);
+  assert.equal(summary.originalItems, generalTrainingItems.length);
+  assert.equal(summary.counts.reading, undefined);
+  const previousConfig = await fs.readFile(
+    path.join(f.root, "config.local.json"),
+    "utf8",
+  );
+  await fs.rm(f.organized, { recursive: true });
+  await fs.mkdir(f.organized);
+  library = await loadLibrary({ archiveRoot: f.archive });
+  assert.equal(library.publicLibrary.items.length, generalTrainingItems.length);
+  assert.throws(() => importSummary(library), /没有可导入的学习材料/);
+  assert.equal(
+    await fs.readFile(path.join(f.root, "config.local.json"), "utf8"),
+    previousConfig,
+  );
+});
+
+test("original G lessons remain reachable through the API in archive and demo modes", async (t) => {
+  const { root } = await fixture(t);
+  for (const forceDemo of [false, true]) {
+    const app = await running(t, { projectRoot: root, forceDemo });
+    const library = await (await fetch(app.url + "/api/library")).json();
+    for (const original of generalTrainingItems) {
+      const listed = library.items.find((item) => item.id === original.id);
+      assert.equal(listed.source, "original");
+      assert.equal(listed.testTrack, "general");
+      const response = await fetch(app.url + "/api/items/" + original.id);
+      assert.equal(response.status, 200);
+      const item = await response.json();
+      assert.equal(item.testTrack, "general");
+      assert.deepEqual(item.data, original.data);
+      assert.deepEqual(item.localMedia, {});
+    }
+  }
+});
+
+test("archive tracks follow explicitly named catalogs and response IDs; missing or contradictory evidence stays unknown", async (t) => {
+  const { archive } = await trackFixture(t);
+  const library = await loadLibrary({ archiveRoot: archive });
+  const byTitle = new Map(
+    library.publicLibrary.items.map((item) => [item.title, item]),
+  );
+  for (const [title, expected] of [
+    ["Cambridge reading A", "academic"],
+    ["Cambridge reading G", "general"],
+    ["Cambridge writing A", "academic"],
+    ["Cambridge writing G", "general"],
+    ["Cambridge reading missing", "unclassified"],
+    ["Cambridge reading conflicting", "unclassified"],
+    ["Academic Reading explicit conflict", "unclassified"],
+  ]) {
+    const item = byTitle.get(title);
+    assert.equal(item.testTrack, expected, title);
+    assert.equal((await library.getItem(item.id)).testTrack, expected, title);
+    assert.equal(item.source, "archive");
+  }
+  assert.equal(
+    library.allowedMedia.size,
+    1,
+    "catalog covers and provenance are not extra media",
+  );
+  assert.equal(
+    byTitle.has("学术类"),
+    false,
+    "classification catalogs are not study items",
+  );
+  assert.ok(
+    !JSON.stringify(library.publicLibrary).includes(
+      "private provenance marker",
+    ),
+  );
+  assert.ok(!JSON.stringify(library.publicLibrary).includes("testPaperId"));
+});
+
+test("unavailable catalogs cannot turn numeric producer enums into guessed A/G tracks", async (t) => {
+  const { archive, organized } = await trackFixture(t);
+  await fs.rm(path.join(organized, "模考目录"), { recursive: true });
+  const library = await loadLibrary({ archiveRoot: archive });
+  for (const item of library.publicLibrary.items.filter(
+    (item) =>
+      item.source === "archive" && ["reading", "writing"].includes(item.kind),
+  ))
+    assert.equal(item.testTrack, "unclassified", item.title);
+});
+
+test("classification provenance rejects traversal and symlinks outside its specific directory", async (t) => {
+  const f = await trackFixture(t);
+  const outside = path.join(f.root, "outside-provenance.json");
+  await fs.writeFile(
+    outside,
+    JSON.stringify({ status: 0, content: [{ passagesId: "reading-g" }] }),
+  );
+  const request = f.requestRows[1];
+  await fs.writeFile(
+    f.requestFile,
+    JSON.stringify([{ ...request, file: "../outside-provenance.json" }]),
+  );
+  let library = await loadLibrary({ archiveRoot: f.archive });
+  assert.equal(
+    library.publicLibrary.items.find(
+      (item) => item.title === "Cambridge reading G",
+    ).testTrack,
+    "unclassified",
+  );
+  await fs.writeFile(f.requestFile, JSON.stringify([request]));
+  await fs.unlink(path.join(f.archive, request.file));
+  await fs.symlink(outside, path.join(f.archive, request.file));
+  library = await loadLibrary({ archiveRoot: f.archive });
+  assert.equal(
+    library.publicLibrary.items.find(
+      (item) => item.title === "Cambridge reading G",
+    ).testTrack,
+    "unclassified",
+  );
+  const outsideIndex = path.join(f.root, "outside-index.json");
+  await fs.writeFile(outsideIndex, JSON.stringify(f.requestRows));
+  await fs.unlink(f.requestFile);
+  await fs.symlink(outsideIndex, f.requestFile);
+  library = await loadLibrary({ archiveRoot: f.archive });
+  assert.equal(
+    library.publicLibrary.items.find(
+      (item) => item.title === "Cambridge writing A",
+    ).testTrack,
+    "unclassified",
+  );
 });
 
 test("range parsing rejects malformed, multiple, empty and unsafe numeric ranges", () => {

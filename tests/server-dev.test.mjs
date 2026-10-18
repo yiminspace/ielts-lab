@@ -71,7 +71,7 @@ test(
       await fetch(`http://127.0.0.1:${port}/api/library`)
     ).json();
     assert.equal(library.mode, "demo");
-    assert.equal(library.items.length, 10);
+    assert.equal(library.items.length, 17);
     const exit = new Promise((resolve) => child.once("exit", resolve));
     child.kill("SIGTERM");
     assert.equal(await exit, 0);
