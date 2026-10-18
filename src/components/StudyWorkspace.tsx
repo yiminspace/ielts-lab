@@ -238,6 +238,22 @@ function Writing({ item }: { item: StudyItem }) {
   const timer = useClock(Number(draft.seconds) || 0);
   const words = countWords(value);
   const part = Number(item.data?.writingPart || 2);
+  const trackLabel =
+    item.testTrack === "general"
+      ? "General Training · G 类"
+      : item.testTrack === "academic"
+        ? "Academic · A 类"
+        : item.testTrack === "shared"
+          ? "A / G 通用"
+          : "类别待确认";
+  const taskLabel =
+    part === 2
+      ? "议论文写作"
+      : item.testTrack === "general"
+        ? "书信写作"
+        : item.testTrack === "academic"
+          ? "图表 / 图示描述"
+          : "Task 1 写作";
   const minWords = part === 1 ? 150 : 250;
   const targetSeconds = (part === 1 ? 20 : 40) * 60;
   const timeBucket = Math.floor(timer.seconds / 5);
@@ -248,8 +264,13 @@ function Writing({ item }: { item: StudyItem }) {
   return (
     <div className="study-writing">
       <section className="study-panel study-writing-prompt">
-        <div className="study-eyebrow">WRITING TASK {part}</div>
-        <h2>写作题目</h2>
+        <div className="study-eyebrow">
+          {trackLabel} · WRITING TASK {part}
+        </div>
+        <h2>{taskLabel}</h2>
+        {item.source === "original" && (
+          <p className="study-original-label">原创练习材料</p>
+        )}
         <RichText
           html={
             item.data?.writingQuestion ||

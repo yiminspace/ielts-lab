@@ -830,3 +830,12 @@
   color: #087c67;
   font-size: 12px;
 }
+.study-writing .study-original-label {
+  display: inline-block;
+  padding: 3px 8px;
+  border: 1px solid #d9e5df;
+  border-radius: 4px;
+  color: #658273;
+  font-size: 11px;
+  margin: 0 0 16px;
+}

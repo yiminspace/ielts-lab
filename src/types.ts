@@ -1,3 +1,4 @@
+export type TestTrack = "academic" | "general" | "shared" | "unclassified";
 export type Kind =
   | "listening"
   | "reading"
@@ -16,6 +17,8 @@ export interface LibraryItem {
   collection: string;
   count?: number;
   description?: string;
+  testTrack?: TestTrack;
+  source?: "archive" | "original";
 }
 export interface StudyItem extends LibraryItem {
   data: any;

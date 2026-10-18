@@ -36,6 +36,7 @@ const walk = (folder) =>
           : [],
     );
 const report = {
+  source: "archive",
   items: 0,
   groups: 0,
   questionMarks: 0,

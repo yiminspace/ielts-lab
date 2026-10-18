@@ -1391,3 +1391,73 @@ th {
     flex-direction: column;
   }
 }
+.track-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.track-picker select {
+  max-width: 240px;
+  font-size: 13px;
+}
+.track-guide {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  justify-content: space-between;
+  padding: 16px 20px;
+  margin-bottom: 24px;
+  border-left: 3px solid var(--green);
+  background: var(--surface);
+}
+.track-guide strong {
+  font-size: 16px;
+}
+.track-guide p {
+  margin: 5px 0 0;
+  max-width: 82ch;
+}
+.track-guide > a {
+  flex-shrink: 0;
+  margin-top: 3px;
+  font-size: 13px;
+}
+.track-guide .track-inventory {
+  font-size: 12px;
+  color: var(--muted);
+}
+.track-guide .text-button {
+  font-size: inherit;
+  padding: 0;
+}
+.material-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.material-labels > span:first-child {
+  color: var(--green-dark);
+}
+@media (max-width: 700px) {
+  .track-picker > span {
+    display: none;
+  }
+  .track-picker select {
+    max-width: 170px;
+    padding: 7px;
+    font-size: 12px;
+  }
+  .topbar-right:has(.track-picker) .local-badge,
+  .topbar-right:has(.track-picker) .avatar {
+    display: none;
+  }
+  .track-guide {
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px;
+  }
+}

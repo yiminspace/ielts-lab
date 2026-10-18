@@ -302,6 +302,14 @@ function SessionView({
 }) {
   const data = item.data?.data?.questions ? item.data.data : item.data || {};
   const listening = item.kind === "listening";
+  const trackLabel =
+    item.testTrack === "general"
+      ? "General Training"
+      : item.testTrack === "academic"
+        ? "Academic"
+        : item.testTrack === "shared"
+          ? "Academic & General Training"
+          : "Track unclassified";
   const groups = useMemo(() => buildGroups(data), [data]);
   const rows = useMemo(() => groups.flatMap((group) => group.rows), [groups]);
   const navigation = useMemo(() => questionNavigation(groups), [groups]);
@@ -380,7 +388,7 @@ function SessionView({
   }
   async function lock<T>(operation: () => T | Promise<T>): Promise<T> {
     return navigator.locks
-      ? navigator.locks.request(`ielts-lab-${draftKey}`, operation)
+      ? navigator.locks.request("ielts-lab-progress-write", operation)
       : operation();
   }
   function saveChecked(proposed: Session) {
@@ -1040,11 +1048,23 @@ function SessionView({
             <p className="ct-setup-label">COMPUTER FAMILIARISATION</p>
             <h1>Single-part practice</h1>
             <p className="ct-setup-title">{item.title}</p>
+            <p className="ct-track-note">
+              <strong>{trackLabel}</strong>
+              {item.source === "original" && (
+                <span className="ct-source-label">
+                  Original practice material
+                </span>
+              )}
+            </p>
             <p>
               Practise the computer-test controls using your own local material.
               This session contains one{" "}
-              {listening ? "listening part" : "reading passage"}, not a complete
-              IELTS test.
+              {listening
+                ? "listening part"
+                : item.testTrack === "general"
+                  ? "reading practice section"
+                  : "reading passage"}
+              , not a complete IELTS test.
             </p>
             <fieldset className="ct-time-choice">
               <legend>Practice time</legend>
@@ -1159,6 +1179,7 @@ function SessionView({
             <div className="ct-own-brand">IELTS Lab</div>
             <div className="ct-test-taker">
               <strong>Test taker ID</strong>
+              <small className="ct-track-label">{trackLabel}</small>
               <span>
                 {listening ? (
                   <>
@@ -1237,8 +1258,12 @@ function SessionView({
                   <div className="ct-instruction">
                     <strong>Part {part}</strong>
                     <p>
-                      {listening ? "Listen" : "Read the passage"} and answer
-                      questions {first}–{last}.
+                      {listening
+                        ? "Listen"
+                        : item.testTrack === "general"
+                          ? "Read the texts"
+                          : "Read the passage"}{" "}
+                      and answer questions {first}–{last}.
                     </p>
                   </div>
                   <div

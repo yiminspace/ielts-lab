@@ -2,6 +2,11 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { demoItems } from "./demo.mjs";
+import { generalTrainingItems } from "./general-training.mjs";
+import {
+  classifyTestTrack,
+  testTrackEvidence,
+} from "../src/lib/test-track.mjs";
 
 const categories = {
   听力: "listening",
@@ -22,6 +27,114 @@ const idFor = (value) =>
   createHash("sha256").update(value).digest("hex").slice(0, 20);
 export const inside = (root, candidate) =>
   candidate === root || candidate.startsWith(root + path.sep);
+
+const originalItems = [...demoItems, ...generalTrainingItems].map((item) => ({
+  ...item,
+  source: "original",
+  testTrack: classifyTestTrack({
+    ...item,
+    // These original examples were authored for these formats. Archive books
+    // never receive a track from an ID or from the appearance of the task.
+    testTrack:
+      item.id === "demo-reading"
+        ? "academic"
+        : item.id === "demo-writing"
+          ? "shared"
+          : item.testTrack,
+  }),
+}));
+const generalItems = originalItems.filter((item) =>
+  generalTrainingItems.some((original) => original.id === item.id),
+);
+const publicItem = ({ data, localMedia, ...item }) => item;
+
+async function readInsideJSON(file, directory) {
+  const real = await fs.realpath(file);
+  if (!inside(directory, real)) throw new Error("分类元数据超出允许目录");
+  return JSON.parse(await fs.readFile(real, "utf8"));
+}
+
+// Only material identifiers are retained. Account/session data and request
+// metadata are never returned by the library or added to the media allowlist.
+async function archiveTrackIndex(root, organized) {
+  const papers = new Map();
+  const memberships = new Map();
+  const add = (map, key, track) => {
+    if (typeof key !== "string" || !key || key.length > 200) return;
+    const values = map.get(key) || new Set();
+    values.add(track);
+    map.set(key, values);
+  };
+  for (const file of await walk(path.join(organized, "模考目录"))) {
+    try {
+      const raw = await readInsideJSON(file, organized);
+      const track = classifyTestTrack({ kind: "reading", title: raw.title });
+      if (!["academic", "general"].includes(track)) continue;
+      for (const collection of raw.data?.paperList || [])
+        for (const paper of collection.testPapers || [])
+          add(papers, String(paper.paperId ?? ""), track);
+    } catch {
+      // Missing or malformed classification evidence leaves items unclassified.
+    }
+  }
+  if (!papers.size) return memberships;
+  let requests;
+  const catalogRoot = path.join(root, "data/目录");
+  const rawRoot = path.join(root, "data/raw/hcp");
+  try {
+    requests = await readInsideJSON(
+      path.join(catalogRoot, "请求来源.json"),
+      catalogRoot,
+    );
+  } catch {
+    return memberships;
+  }
+  if (!Array.isArray(requests)) return memberships;
+  for (const request of requests) {
+    const kind =
+      request?.path === "/hcp/qsBank/passages/examPassagesV2"
+        ? "reading"
+        : request?.path === "/hcp/qsBank/writings/examWritingsV2"
+          ? "writing"
+          : null;
+    if (
+      !kind ||
+      !/^data\/raw\/hcp\/[a-f0-9]{64}\.json$/.test(request.file || "")
+    )
+      continue;
+    try {
+      const params =
+        typeof request.params === "string"
+          ? JSON.parse(request.params)
+          : request.params;
+      const tracks = papers.get(String(params?.testPaperId ?? ""));
+      if (!tracks?.size) continue;
+      const response = await readInsideJSON(
+        path.join(root, request.file),
+        rawRoot,
+      );
+      if (response.status !== 0 || !Array.isArray(response.content)) continue;
+      for (const row of response.content) {
+        const id = row?.[kind === "reading" ? "passagesId" : "writingId"];
+        if (typeof id !== "string" || !id || id.length > 200) continue;
+        for (const track of tracks) add(memberships, `${kind}:${id}`, track);
+      }
+    } catch {
+      // The study material itself remains usable when provenance is unavailable.
+    }
+  }
+  return memberships;
+}
+
+function archiveItemTrack(item, data, memberships) {
+  if (!["reading", "writing"].includes(item.kind)) return "shared";
+  const key = `${item.kind}:${data?.[item.kind === "reading" ? "passagesId" : "writingId"] ?? ""}`;
+  const evidence = new Set([
+    ...(memberships.get(key) || []),
+    ...testTrackEvidence(item, data),
+  ]);
+  return evidence.size === 1 ? [...evidence][0] : "unclassified";
+}
 
 async function walk(root) {
   const result = [];
@@ -103,7 +216,7 @@ export async function validateArchive(root) {
 
 export async function loadLibrary({ archiveRoot, forceDemo = false } = {}) {
   if (!archiveRoot || forceDemo) {
-    const items = demoItems.map(({ data, localMedia, ...item }) => item);
+    const items = originalItems.map(publicItem);
     return {
       mode: "demo",
       archiveRoot: null,
@@ -117,7 +230,8 @@ export async function loadLibrary({ archiveRoot, forceDemo = false } = {}) {
           "当前为原创演示材料；可在本机导入已有学习归档。AI 评分及真人服务未接入。",
         ],
       },
-      getItem: async (id) => demoItems.find((item) => item.id === id) || null,
+      getItem: async (id) =>
+        originalItems.find((item) => item.id === id) || null,
     };
   }
   const root = await validateArchive(archiveRoot);
@@ -126,7 +240,8 @@ export async function loadLibrary({ archiveRoot, forceDemo = false } = {}) {
   const globalMedia = new Map();
   const pronunciations = new Map();
   const records = new Map();
-  const items = [];
+  const items = generalItems.map(publicItem);
+  const trackMemberships = await archiveTrackIndex(root, organized);
   const issues = [];
   const allowedMedia = new Set();
   let badDocuments = 0;
@@ -196,7 +311,9 @@ export async function loadLibrary({ archiveRoot, forceDemo = false } = {}) {
             ),
             collection,
             count: countFor(kind, data),
+            source: "archive",
           };
+          item.testTrack = archiveItemTrack(item, data, trackMemberships);
           items.push(item);
           records.set(id, {
             file,
@@ -221,6 +338,13 @@ export async function loadLibrary({ archiveRoot, forceDemo = false } = {}) {
     issues.push(
       `${absentPronunciations} 条发音记录没有本地音频，练习时会提示缺失。`,
     );
+  const unclassified = items.filter(
+    (item) => item.testTrack === "unclassified",
+  ).length;
+  if (unclassified)
+    issues.push(
+      `${unclassified} 项阅读或写作材料缺少可核实的 A/G 归属，保留在全部材料中。`,
+    );
   issues.push(
     "仅导入已归档的学习材料；训练营、账号信息、原软件个人记录不在导入范围。",
     "部分完整口语范文、中文翻译与原始课件未包含在归档中；AI 评分及真人服务未接入。",
@@ -232,6 +356,8 @@ export async function loadLibrary({ archiveRoot, forceDemo = false } = {}) {
     allowedMedia,
     publicLibrary: { items, mode: "archive", counts: tally(items), issues },
     getItem: async (id) => {
+      const original = generalItems.find((item) => item.id === id);
+      if (original) return original;
       const record = records.get(id);
       if (!record) return null;
       const raw = await readSafe(record.file);

@@ -1061,3 +1061,23 @@
 .computer-test .ct-conflict-screen button {
   margin: 10px 12px 0 0;
 }
+.computer-test .ct-track-label {
+  font-size: 11px;
+  color: var(--ct-muted);
+  font-weight: 700;
+  line-height: 1.4;
+}
+.computer-test .ct-track-note {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+.computer-test .ct-source-label {
+  font-size: 11px;
+  border: 1px solid var(--ct-line);
+  padding: 2px 7px;
+  font-weight: 400;
+  color: var(--ct-muted);
+}
