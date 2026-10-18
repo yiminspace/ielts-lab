@@ -133,6 +133,7 @@ export function useSaveError() {
   );
 }
 export function getProgress() {
+  refreshBrowser();
   return state;
 }
 export function recordAttempt(a: Omit<Attempt, "id" | "createdAt">) {
@@ -148,6 +149,14 @@ export function recordAttempt(a: Omit<Attempt, "id" | "createdAt">) {
 export function saveDraft(id: string, value: any) {
   refreshBrowser();
   persist({ ...state, drafts: { ...state.drafts, [id]: value } });
+}
+// Call inside a per-draft Web Lock when available. The comparison also protects
+// sequential writes before the browser delivers another tab's storage event.
+export function saveDraftIfCurrent(id: string, value: any, expected: string) {
+  refreshBrowser();
+  if (JSON.stringify(state.drafts[id] ?? null) !== expected) return false;
+  persist({ ...state, drafts: { ...state.drafts, [id]: value } });
+  return true;
 }
 export function saveNote(id: string, value: string) {
   refreshBrowser();

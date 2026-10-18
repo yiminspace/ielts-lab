@@ -99,6 +99,39 @@ test("demo and archive browser progress stay isolated", async () => {
   await b.api.hydrateProgress("archive");
   assert.equal(b.api.getProgress().drafts.demo, undefined);
 });
+test("a stale same-exam draft cannot overwrite newer answers before storage events arrive", async () => {
+  const env = environment();
+  const a = env.tab(),
+    b = env.tab();
+  await a.api.hydrateProgress("demo");
+  await b.api.hydrateProgress("demo");
+  const key = "exam:reading-1";
+  assert.equal(
+    a.api.saveDraftIfCurrent(
+      key,
+      { answers: { q1: "new answer" }, revision: 1 },
+      "null",
+    ),
+    true,
+  );
+  assert.equal(
+    b.api.saveDraftIfCurrent(key, { answers: {}, revision: 1 }, "null"),
+    false,
+  );
+  assert.equal(b.api.getProgress().drafts[key].answers.q1, "new answer");
+  await b.flush();
+  await a.flush();
+  assert.equal(env.service.value.drafts[key].answers.q1, "new answer");
+  const current = JSON.stringify(a.api.getProgress().drafts[key]);
+  assert.equal(
+    a.api.saveDraftIfCurrent(
+      key,
+      { answers: { q1: "next answer" }, revision: 2 },
+      current,
+    ),
+    true,
+  );
+});
 test("invalid imported notes cannot crash the workspace", () => {
   const t = environment().tab();
   assert.throws(

@@ -37,6 +37,8 @@ import {
 } from "./lib/progress";
 import ExamWorkspace from "./components/ExamWorkspace";
 import StudyWorkspace from "./components/StudyWorkspace";
+import ComputerTestSession from "./components/ComputerTestSession";
+import ComputerWriting from "./components/ComputerWriting";
 
 const kinds: {
   id: Kind;
@@ -128,9 +130,11 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [item, setItem] = useState<StudyItem | null>(null);
   const [itemError, setItemError] = useState("");
-  const itemId = route.startsWith("/item/")
-    ? decodeURIComponent(route.slice(6))
-    : "";
+  const computerMode = route.startsWith("/exam/");
+  const itemId =
+    route.startsWith("/item/") || computerMode
+      ? decodeURIComponent(route.slice(6))
+      : "";
   const section = route.split("/")[1] || "home";
   const kind = route.split("/")[2] as Kind;
   useEffect(() => {
@@ -209,6 +213,37 @@ export default function App() {
         : null,
     };
   }, [progress.attempts]);
+  if (computerMode) {
+    const exit = () => navigate("/item/" + encodeURIComponent(itemId));
+    return (
+      <>
+        {error || itemError ? (
+          <div className="empty">
+            <h2>{error || itemError}</h2>
+            <button onClick={exit}>返回学习模式</button>
+          </div>
+        ) : !library || !item ? (
+          <div className="loading">
+            <span className="spinner" />
+            正在打开机考练习…
+          </div>
+        ) : (
+          <Boundary key={"exam:" + item.id}>
+            {item.kind === "writing" ? (
+              <ComputerWriting item={item} onExit={exit} />
+            ) : ["listening", "reading"].includes(item.kind) ? (
+              <ComputerTestSession item={item} onExit={exit} />
+            ) : (
+              <div className="empty">
+                <p>这类材料使用学习模式。</p>
+                <button onClick={exit}>返回</button>
+              </div>
+            )}
+          </Boundary>
+        )}
+      </>
+    );
+  }
   return (
     <div className={"app-shell " + (itemId ? "studying" : "")}>
       {menu && (
@@ -365,6 +400,26 @@ export default function App() {
                       {progress.bookmarks.includes(item.id) ? "已收藏" : "收藏"}
                     </button>
                   </div>
+                  {["listening", "reading", "writing"].includes(item.kind) &&
+                    !reviewAttempt && (
+                      <div className="computer-entry">
+                        <div>
+                          <strong>用机考界面练习</strong>
+                          <p>
+                            参照 IDP
+                            官方熟悉测试的布局与操作。当前练习这一节材料。
+                          </p>
+                        </div>
+                        <button
+                          className="button"
+                          onClick={() =>
+                            navigate("/exam/" + encodeURIComponent(item.id))
+                          }
+                        >
+                          进入机考界面 <ArrowRight size={17} />
+                        </button>
+                      </div>
+                    )}
                   {["listening", "reading"].includes(item.kind) ? (
                     <ExamWorkspace item={item} reviewAttempt={reviewAttempt} />
                   ) : (

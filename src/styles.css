@@ -1363,3 +1363,31 @@ th {
     scroll-behavior: auto !important;
   }
 }
+.computer-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 22px;
+  margin-bottom: 22px;
+  background: #f2f5f6;
+  border: 1px solid #d8dfe2;
+  border-radius: 8px;
+}
+.computer-entry p {
+  margin: 6px 0 0;
+  color: #5b676b;
+  font-size: 13px;
+}
+.computer-entry .button {
+  flex-shrink: 0;
+  background: #18262c;
+  color: white;
+}
+
+@media (max-width: 700px) {
+  .computer-entry {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
