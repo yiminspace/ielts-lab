@@ -203,3 +203,23 @@ export function validatePaperParts(items, parts, kind, shortDemo = false) {
     return `This paper contains ${count} questions; a complete paper needs 40.`;
   return "";
 }
+
+/** Keyboard movement stays in the visible navigation group and never wraps. */
+export function navigationDestination(numbers, current, key) {
+  if (!numbers.length) return null;
+  const index = numbers.indexOf(current);
+  if (key === "Home") return numbers[0];
+  if (key === "End") return numbers.at(-1);
+  if (key === "ArrowLeft") return numbers[Math.max(0, index - 1)];
+  if (key === "ArrowRight")
+    return numbers[Math.min(numbers.length - 1, Math.max(0, index) + 1)];
+  return null;
+}
+export function splitByKeyboard(current, key) {
+  if (key === "Home") return 30;
+  if (key === "End") return 70;
+  if (key === "Enter") return 50;
+  if (key === "ArrowLeft") return Math.max(30, current - 2);
+  if (key === "ArrowRight") return Math.min(70, current + 2);
+  return null;
+}

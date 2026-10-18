@@ -132,3 +132,29 @@ test("a stale tab cannot replace a newer same-session save, but an owner can sav
     null,
   );
 });
+
+test("keyboard question navigation stays within its visible part and does not consume answer-editing keys", async () => {
+  const { navigationDestination } =
+    await import("../src/lib/computer-test.mjs");
+  const numbers = [11, 12, 13, 14];
+  assert.equal(navigationDestination(numbers, 12, "ArrowRight"), 13);
+  assert.equal(navigationDestination(numbers, 12, "ArrowLeft"), 11);
+  assert.equal(navigationDestination(numbers, 11, "ArrowLeft"), 11);
+  assert.equal(navigationDestination(numbers, 14, "ArrowRight"), 14);
+  assert.equal(navigationDestination(numbers, 13, "Home"), 11);
+  assert.equal(navigationDestination(numbers, 13, "End"), 14);
+  assert.equal(navigationDestination(numbers, 13, "Tab"), null);
+  assert.equal(navigationDestination(numbers, 13, "a"), null);
+  assert.equal(navigationDestination([], 13, "ArrowRight"), null);
+});
+test("keyboard split resizing respects readable bounds and an explicit equal-width reset", async () => {
+  const { splitByKeyboard } = await import("../src/lib/computer-test.mjs");
+  assert.equal(splitByKeyboard(50, "ArrowLeft"), 48);
+  assert.equal(splitByKeyboard(50, "ArrowRight"), 52);
+  assert.equal(splitByKeyboard(30, "ArrowLeft"), 30);
+  assert.equal(splitByKeyboard(70, "ArrowRight"), 70);
+  assert.equal(splitByKeyboard(50, "Home"), 30);
+  assert.equal(splitByKeyboard(50, "End"), 70);
+  assert.equal(splitByKeyboard(34, "Enter"), 50);
+  assert.equal(splitByKeyboard(50, "Tab"), null);
+});
