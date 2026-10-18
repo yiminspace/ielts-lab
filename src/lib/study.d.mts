@@ -17,6 +17,16 @@ export function typingMetrics(
   complete: boolean;
 };
 export function formatTime(seconds?: number): string;
+export function writingReview(
+  itemId: string,
+  attempt: unknown,
+): {
+  text: string;
+  notes: string;
+  words: number;
+  durationSeconds: number | null;
+  sharedTiming: boolean;
+} | null;
 export function reviewIndex(
   rows: Record<string, any>[],
   attempt: { answers?: Record<string, unknown>; detail?: string } | undefined,

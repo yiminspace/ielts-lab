@@ -39,6 +39,9 @@ import ExamWorkspace from "./components/ExamWorkspace";
 import StudyWorkspace from "./components/StudyWorkspace";
 import ComputerTestSession from "./components/ComputerTestSession";
 import ComputerWriting from "./components/ComputerWriting";
+import PaperCatalog from "./components/PaperCatalog";
+import PaperWorkspace from "./components/PaperWorkspace";
+import { totalPracticeSeconds } from "./lib/paper-session.mjs";
 import { matchesTestTrack } from "./lib/test-track.mjs";
 
 type TrackChoice = "general" | "academic" | "all";
@@ -182,6 +185,9 @@ export default function App() {
     scopedLibrary?.items.some((entry) => entry.id === attempt.itemId),
   );
   const computerMode = route.startsWith("/exam/");
+  const paperId = route.startsWith("/paper/")
+    ? decodeURIComponent(route.slice(7))
+    : "";
   const itemId =
     route.startsWith("/item/") || computerMode
       ? decodeURIComponent(route.slice(6))
@@ -230,19 +236,21 @@ export default function App() {
   }, [itemId]);
   const activeKind = item?.kind || (section === "library" ? kind : null);
   const title =
-    section === "home"
-      ? "学习空间"
-      : section === "library"
-        ? label(kind)
-        : section === "history"
-          ? "练习记录"
-          : section === "mistakes"
-            ? "错题复习"
-            : section === "bookmarks"
-              ? "我的收藏"
-              : section === "settings"
-                ? "资料与设置"
-                : item?.title || "正在打开材料";
+    section === "papers"
+      ? "G 类完整套卷"
+      : section === "home"
+        ? "学习空间"
+        : section === "library"
+          ? label(kind)
+          : section === "history"
+            ? "练习记录"
+            : section === "mistakes"
+              ? "错题复习"
+              : section === "bookmarks"
+                ? "我的收藏"
+                : section === "settings"
+                  ? "资料与设置"
+                  : item?.title || "正在打开材料";
   const stats = useMemo(() => {
     const attempts = progress.attempts;
     const scored = attempts.filter(
@@ -252,9 +260,7 @@ export default function App() {
     );
     return {
       finished: new Set(attempts.map((a) => a.itemId)).size,
-      minutes: Math.round(
-        attempts.reduce((s, a) => s + (a.durationSeconds || 0), 0) / 60,
-      ),
+      minutes: Math.round(totalPracticeSeconds(attempts) / 60),
       accuracy: scored.length
         ? Math.round(
             (scored.reduce((s, a) => s + (a.score || 0), 0) /
@@ -264,6 +270,18 @@ export default function App() {
         : null,
     };
   }, [progress.attempts]);
+  if (paperId)
+    return error ? (
+      <div className="empty" role="alert">
+        {error}
+      </div>
+    ) : !library ? (
+      <div className="loading">正在恢复学习记录…</div>
+    ) : (
+      <Boundary key={paperId}>
+        <PaperWorkspace id={paperId} />
+      </Boundary>
+    );
   if (computerMode) {
     const exit = () => navigate("/item/" + encodeURIComponent(itemId));
     return (
@@ -320,6 +338,12 @@ export default function App() {
           >
             <LayoutDashboard size={18} />
             学习空间
+          </a>
+          <a
+            className={"nav-item " + (section === "papers" ? "active" : "")}
+            href="#/papers"
+          >
+            <FileText size={18} />G 类完整套卷
           </a>
           <div className="nav-label">专项练习</div>
           {kinds.map((k, i) => (
@@ -516,6 +540,8 @@ export default function App() {
                 </Boundary>
               )}
             </>
+          ) : section === "papers" ? (
+            <PaperCatalog />
           ) : section === "home" ? (
             <>
               <div className="page-heading">
@@ -536,6 +562,18 @@ export default function App() {
                 >
                   <History size={16} />
                   查看记录
+                </button>
+              </div>
+              <div className="paper-home-entry">
+                <div>
+                  <h2>按考试节奏，完成一整套。</h2>
+                  <p>
+                    G 类听力、阅读、写作连续练习；切换
+                    Part、共用计时，最后交卷。
+                  </p>
+                </div>
+                <button className="button" onClick={() => navigate("/papers")}>
+                  G 类完整套卷 <ArrowRight size={17} />
                 </button>
               </div>
               <div className="overview-stats">

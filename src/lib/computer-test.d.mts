@@ -33,3 +33,48 @@ export function prepareSessionSave<T extends Record<string, unknown>>(
   expectedSignature: string,
   proposed: T,
 ): (T & { revision: number }) | null;
+
+export interface PaperPart {
+  itemId: string;
+  partIndex: number;
+  prefix: string;
+  originalGroups: QuestionGroup[];
+  groups: QuestionGroup[];
+  first: number;
+  last: number;
+}
+export function paperParts(items: import("../types").StudyItem[]): PaperPart[];
+export function answersForPart(
+  part: PaperPart,
+  answers: Record<string, string | string[]>,
+): Record<string, string | string[]>;
+export function paperDraftKey(
+  paperId: string,
+  runId: string,
+  kind: string,
+): string;
+export function paperReadingDeadline(startedAt: number): number;
+export function advancePaperAudio(
+  state: { audioIndex?: number; audioEnded: boolean; deadline: number | null },
+  eventIndex: number,
+  count: number,
+  now: number,
+  successful?: boolean,
+): {
+  audioIndex: number;
+  audioPosition: number;
+  audioEnded: boolean;
+  deadline: number | null;
+} | null;
+export function validatePaperParts(
+  items: import("../types").StudyItem[],
+  parts: PaperPart[],
+  kind: string,
+  shortDemo?: boolean,
+): string;
+
+export function renumberGapPrefixes(
+  html: string,
+  originalRows: QuestionRow[],
+  normalizedRows: QuestionRow[],
+): string;

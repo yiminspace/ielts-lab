@@ -63,7 +63,7 @@ addEventListener("storage", (e) => {
     notify();
   }
 });
-function saveServer() {
+function saveServer(leavingPage = false) {
   if (!hydrated || !dirty) return;
   const body = JSON.stringify(state);
   const version = state.updatedAt;
@@ -75,8 +75,20 @@ function saveServer() {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body,
-          keepalive: body.length < 60000,
+          keepalive:
+            leavingPage && new TextEncoder().encode(body).byteLength < 60000,
         });
+        // Complete the response before allowing the next queued request.
+        await r.text?.();
+        if (!r.ok)
+          console.warn(
+            "[progress save] HTTP",
+            r.status,
+            "revision",
+            version,
+            "bytes",
+            new TextEncoder().encode(body).byteLength,
+          );
         if (r.status === 409) {
           saveError =
             "另一窗口已有更新，当前输入仍在浏览器中。请导出备份后刷新，以免覆盖新记录。";
@@ -86,7 +98,15 @@ function saveServer() {
         if (!r.ok) throw new Error("保存到本地服务失败");
         saveError = "";
         if (state.updatedAt === version) dirty = false;
-      } catch {
+      } catch (error) {
+        console.warn(
+          "[progress save] request failed",
+          error instanceof Error ? error.message : String(error),
+          "revision",
+          version,
+          "bytes",
+          new TextEncoder().encode(body).byteLength,
+        );
         saveError =
           "学习记录已留在浏览器，本地服务暂未同步；恢复服务后继续操作会重新保存。";
       }
@@ -112,7 +132,7 @@ function persist(next: Progress) {
 }
 addEventListener("pagehide", () => {
   clearTimeout(timer);
-  saveServer();
+  saveServer(true);
 });
 export function useProgress() {
   return useSyncExternalStore(

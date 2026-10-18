@@ -26,9 +26,35 @@ import {
   writingRevisionMatches,
   writingCanRecord,
 } from "../lib/computer-writing.mjs";
+import {
+  restorePaperWriting,
+  startPaperWriting,
+  switchPaperWritingTask,
+  editPaperWriting,
+  finishPaperWriting,
+  paperWritingAttempt,
+  paperWritingCompletion,
+} from "../lib/computer-writing-paper.mjs";
+import type {
+  PaperWritingDraft,
+  PaperWritingResult,
+} from "../lib/computer-writing-paper.mjs";
 import "../computer-writing.css";
 
-type WritingDraft = {
+export type ComputerWritingPaperMode = {
+  paperId: string;
+  runId: string;
+  items: StudyItem[];
+  startedAt: number;
+  autoStart?: boolean;
+  onComplete: (result: PaperWritingResult) => void;
+};
+export type ComputerWritingProps = {
+  item: StudyItem;
+  onExit: () => void;
+  paperMode?: ComputerWritingPaperMode;
+};
+type SingleWritingDraft = {
   version: 1;
   mode: "single-task-writing";
   status: "ready" | "running" | "finished";
@@ -43,11 +69,12 @@ type WritingDraft = {
   attemptRecorded: boolean;
   revision?: string;
 };
+type WritingDraft = SingleWritingDraft | PaperWritingDraft;
 type OptionsPage = "menu" | "contrast" | "text-size" | null;
 type Contrast = "black-white" | "white-black" | "yellow-black";
 type TextSize = "regular" | "large" | "extra-large";
 
-function freshDraft(): WritingDraft {
+function freshDraft(): SingleWritingDraft {
   return {
     version: 1,
     mode: "single-task-writing",
@@ -63,14 +90,22 @@ function freshDraft(): WritingDraft {
     attemptRecorded: false,
   };
 }
-function readDraft(saved: any): WritingDraft {
+function readDraft(
+  saved: any,
+  paperMode?: ComputerWritingPaperMode,
+): WritingDraft {
+  if (paperMode)
+    return restorePaperWriting(saved, {
+      ...paperMode,
+      itemIds: paperMode.items.map((item) => item.id),
+    });
   if (
     !saved ||
     saved.mode !== "single-task-writing" ||
     !["ready", "running", "finished"].includes(saved.status)
   )
     return freshDraft();
-  const draft: WritingDraft = {
+  const draft: SingleWritingDraft = {
     ...freshDraft(),
     ...saved,
     text: typeof saved.text === "string" ? saved.text : "",
@@ -101,27 +136,39 @@ function readDraft(saved: any): WritingDraft {
 }
 
 function ComputerWritingSession({
-  item,
+  item: baseItem,
   onExit,
-}: {
-  item: StudyItem;
-  onExit: () => void;
-}) {
-  const key = `exam:${item.id}`;
+  paperMode,
+}: ComputerWritingProps) {
+  const key = paperMode
+    ? `paper:${paperMode.paperId}:${paperMode.runId}:writing`
+    : `exam:${baseItem.id}`;
   const [initial] = useState(() => {
     const raw = getProgress().drafts[key];
     return {
-      draft: readDraft(raw),
+      draft: readDraft(raw, paperMode),
       snapshot: JSON.stringify(raw ?? null),
       revision: writingDraftRevision(raw),
     };
   });
   const [draft, setDraft] = useState<WritingDraft>(initial.draft);
+  const writingItems = paperMode?.items || [baseItem];
+  const item =
+    draft.mode === "paper-writing"
+      ? writingItems.find((task) => task.id === draft.activeItemId) ||
+        writingItems[0]
+      : baseItem;
+  const responseFor = (value: WritingDraft, id: string) =>
+    value.mode === "paper-writing"
+      ? value.responses[id] || { text: "", notes: "" }
+      : value;
+  const response = responseFor(draft, item.id);
   const draftRef = useRef(draft);
   const expectedSnapshot = useRef(initial.snapshot);
   const expectedRevision = useRef(initial.revision);
   const writeQueue = useRef<Promise<unknown>>(Promise.resolve());
   const conflictRef = useRef(false);
+  const completedCallback = useRef("");
   const [conflict, setConflict] = useState(false);
   const [pendingWrites, setPendingWrites] = useState(0);
   const progress = useProgress();
@@ -156,7 +203,10 @@ function ComputerWritingSession({
           : "Task 1 response";
   const recommended = part === 1 ? 20 : 40;
   const minimum = part === 1 ? 150 : 250;
-  const words = countWords(draft.text);
+  const words = countWords(response.text);
+  const emptyTasks = writingItems.filter(
+    (task) => !countWords(responseFor(draft, task.id).text),
+  );
   const clock = writingClock(
     draft.startedAt,
     draft.deadlineAt,
@@ -241,6 +291,64 @@ function ComputerWritingSession({
         showConflict();
         return;
       }
+      if (current.mode === "paper-writing") {
+        const duration = writingClock(
+          current.startedAt,
+          current.deadlineAt,
+          current.finishedAt,
+        ).elapsedSeconds;
+        const attemptIds: string[] = [];
+        for (const task of writingItems) {
+          let attempt = paperWritingAttempt(
+            current,
+            task.id,
+            getProgress().attempts,
+          );
+          if (!attempt) {
+            const answer = current.responses[task.id];
+            recordAttempt({
+              itemId: task.id,
+              title: task.title,
+              kind: "writing",
+              durationSeconds: duration,
+              answers: {
+                essay: answer.text,
+                notes: answer.notes,
+                paperId: current.paperId,
+                paperRunId: current.runId,
+                writingSession: `${current.paperId}:${current.runId}:writing`,
+              },
+              detail: `整卷写作 · Task ${task.data?.writingPart} · ${countWords(answer.text)} 词 · 两题共用 ${formatTime(duration)} · ${current.finishReason === "time-expired" ? "计时结束" : "完成提交"}`,
+            });
+            attempt = paperWritingAttempt(
+              current,
+              task.id,
+              getProgress().attempts,
+            );
+          }
+          if (!attempt) {
+            showConflict();
+            return;
+          }
+          attemptIds.push(attempt.id);
+        }
+        if (
+          !current.attemptRecorded ||
+          JSON.stringify(current.attemptIds) !== JSON.stringify(attemptIds)
+        ) {
+          const recorded = {
+            ...current,
+            attemptRecorded: true,
+            attemptIds,
+            revision: crypto.randomUUID(),
+          };
+          if (commit(recorded)) {
+            draftRef.current = recorded;
+            setDraft(recorded);
+          }
+        }
+        return;
+      }
       const exists = getProgress().attempts.some(
         (a) =>
           a.itemId === item.id && a.answers?.writingSession === current.runId,
@@ -286,12 +394,15 @@ function ComputerWritingSession({
       reason === "time-expired" && current.deadlineAt
         ? current.deadlineAt
         : Date.now();
-    const completed: WritingDraft = {
-      ...current,
-      status: "finished",
-      finishedAt,
-      finishReason: reason,
-    };
+    const completed: WritingDraft =
+      current.mode === "paper-writing"
+        ? finishPaperWriting(current, reason)
+        : {
+            ...current,
+            status: "finished",
+            finishedAt,
+            finishReason: reason,
+          };
     const stored = await persist(completed, false);
     if (!stored) return;
     await recordCompleted(stored);
@@ -316,10 +427,24 @@ function ComputerWritingSession({
   }
   function edit(field: "text" | "notes", value: string) {
     if (draftRef.current.status !== "running" || checkDeadline()) return;
-    persist({ ...draftRef.current, [field]: value });
+    persist(
+      draftRef.current.mode === "paper-writing"
+        ? editPaperWriting(draftRef.current, item.id, field, value)
+        : { ...draftRef.current, [field]: value },
+    );
+  }
+  function switchTask(id: string) {
+    if (conflictRef.current || checkDeadline()) return;
+    if (draftRef.current.mode === "paper-writing")
+      persist(switchPaperWritingTask(draftRef.current, id));
+    setSubmissionOpen(false);
   }
   function start() {
-    if (conflictRef.current) return;
+    if (conflictRef.current || draftRef.current.status !== "ready") return;
+    if (draftRef.current.mode === "paper-writing") {
+      persist(startPaperWriting(draftRef.current));
+      return;
+    }
     const startTime = Date.now();
     const limit = writingLimit(draftRef.current.limitMinutes);
     persist({
@@ -335,8 +460,18 @@ function ComputerWritingSession({
     setNow(startTime);
   }
   function exportEssay() {
+    const value = draftRef.current;
+    const text =
+      value.mode === "paper-writing"
+        ? writingItems
+            .map(
+              (task) =>
+                `Writing Task ${task.data?.writingPart}\n${task.title}\n\n${value.responses[task.id].text}\n\nNotes\n${value.responses[task.id].notes}`,
+            )
+            .join("\n\n--------------------\n\n")
+        : value.text;
     const url = URL.createObjectURL(
-      new Blob([draftRef.current.text], { type: "text/plain;charset=utf-8" }),
+      new Blob([text], { type: "text/plain;charset=utf-8" }),
     );
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -350,7 +485,7 @@ function ComputerWritingSession({
     const latest = getProgress().drafts[key];
     expectedSnapshot.current = JSON.stringify(latest ?? null);
     expectedRevision.current = writingDraftRevision(latest);
-    const current = readDraft(latest);
+    const current = readDraft(latest, paperMode);
     draftRef.current = current;
     setDraft(current);
     conflictRef.current = false;
@@ -385,6 +520,15 @@ function ComputerWritingSession({
     if (draft.status === "finished" && !draft.attemptRecorded)
       recordCompleted(draft);
   }, [draft.status, draft.attemptRecorded, draft.runId, conflict]);
+  useEffect(() => {
+    if (!paperMode || conflict || draft.mode !== "paper-writing") return;
+    const result = paperWritingCompletion(draft);
+    if (!result || !isCurrent()) return;
+    const identity = `${draft.paperId}:${draft.runId}:${JSON.stringify(result)}`;
+    if (completedCallback.current === identity) return;
+    completedCallback.current = identity;
+    paperMode.onComplete(result);
+  }, [draft, conflict, paperMode]);
   useEffect(() => {
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -467,7 +611,7 @@ function ComputerWritingSession({
       <div className="cw-identity">
         <strong>Test taker ID</strong>
         <span>
-          {trackLabel} · Writing Task {part}
+          {trackLabel} · {paperMode ? "Writing test" : `Writing Task ${part}`}
         </span>
       </div>
       {draft.status === "running" && (
@@ -539,9 +683,13 @@ function ComputerWritingSession({
       {draft.status === "ready" ? (
         <main className="cw-intro">
           <div className="cw-intro-inner">
-            <p className="cw-kicker">Single-task practice</p>
-            <h1>Writing familiarisation</h1>
-            <h2>{item.title}</h2>
+            <p className="cw-kicker">
+              {paperMode ? "Two-task Writing test" : "Single-task practice"}
+            </p>
+            <h1>
+              {paperMode ? "Writing · 60 minutes" : "Writing familiarisation"}
+            </h1>
+            <h2>{paperMode ? "Task 1 and Task 2" : item.title}</h2>
             <p className="cw-track-note">
               <strong>
                 {trackLabel} · {taskType}
@@ -552,13 +700,25 @@ function ComputerWritingSession({
                 </span>
               )}
             </p>
-            <p>
-              This practice contains <strong>Writing Task {part} only</strong>.
-              It is not a complete two-task Writing test.
-            </p>
-            <p>
-              本次练习只包含当前一道写作题，默认不计时。你可以熟悉题目与答题区、字数统计、笔记和显示设置。
-            </p>
+            {paperMode ? (
+              <p>
+                Complete both writing tasks within one continuous 60-minute
+                session. Task 1 requires at least 150 words; Task 2 requires at
+                least 250 words. You may move between tasks, and the timer
+                continues while you are away.
+              </p>
+            ) : (
+              <>
+                <p>
+                  This practice contains{" "}
+                  <strong>Writing Task {part} only</strong>. It is not a
+                  complete two-task Writing test.
+                </p>
+                <p>
+                  本次练习只包含当前一道写作题，默认不计时。你可以熟悉题目与答题区、字数统计、笔记和显示设置。
+                </p>
+              </>
+            )}
             <ul>
               <li>
                 {taskType}. Write at least {minimum} words.
@@ -573,57 +733,61 @@ function ComputerWritingSession({
                 provided.
               </li>
             </ul>
-            <fieldset className="cw-time-choices">
-              <legend>Practice timing</legend>
-              {(
-                [
-                  {
-                    value: 0,
-                    label: "Untimed",
-                    description: "Default familiarisation mode",
-                  },
-                  {
-                    value: 20,
-                    label: "20 minutes",
-                    description:
-                      part === 1
-                        ? "Suggested for this task"
-                        : "Shorter practice",
-                  },
-                  {
-                    value: 40,
-                    label: "40 minutes",
-                    description:
-                      part === 2
-                        ? "Suggested for this task"
-                        : "Extended practice",
-                  },
-                ] as const
-              ).map((option) => (
-                <label key={option.value}>
-                  <input
-                    disabled={conflict}
-                    type="radio"
-                    name="writing-time"
-                    value={option.value}
-                    checked={draft.limitMinutes === option.value}
-                    onChange={() =>
-                      persist({
-                        ...draftRef.current,
-                        limitMinutes: option.value,
-                      })
-                    }
-                  />
-                  <span>
-                    <strong>{option.label}</strong>
-                    <small>{option.description}</small>
-                  </span>
-                </label>
-              ))}
-            </fieldset>
+            {!paperMode && (
+              <fieldset className="cw-time-choices">
+                <legend>Practice timing</legend>
+                {(
+                  [
+                    {
+                      value: 0,
+                      label: "Untimed",
+                      description: "Default familiarisation mode",
+                    },
+                    {
+                      value: 20,
+                      label: "20 minutes",
+                      description:
+                        part === 1
+                          ? "Suggested for this task"
+                          : "Shorter practice",
+                    },
+                    {
+                      value: 40,
+                      label: "40 minutes",
+                      description:
+                        part === 2
+                          ? "Suggested for this task"
+                          : "Extended practice",
+                    },
+                  ] as const
+                ).map((option) => (
+                  <label key={option.value}>
+                    <input
+                      disabled={conflict}
+                      type="radio"
+                      name="writing-time"
+                      value={option.value}
+                      checked={draft.limitMinutes === option.value}
+                      onChange={() => {
+                        if (draftRef.current.mode === "single-task-writing")
+                          persist({
+                            ...draftRef.current,
+                            limitMinutes: option.value,
+                          });
+                      }}
+                    />
+                    <span>
+                      <strong>{option.label}</strong>
+                      <small>{option.description}</small>
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
+            )}
             {draft.limitMinutes > 0 && (
               <p className="cw-timing-note">
-                计时开始后不能暂停；切换页面或刷新时仍继续计时，到时自动保存并结束本题。
+                计时开始后不能暂停；切换页面或刷新时仍继续计时，到时自动保存并结束
+                {paperMode ? "两道写作题" : "本题"}。
               </p>
             )}
             <div className="cw-intro-actions">
@@ -635,7 +799,8 @@ function ComputerWritingSession({
                 disabled={conflict || pendingWrites > 0}
                 onClick={start}
               >
-                Start practice <ChevronRight size={20} />
+                {paperMode ? "Start writing test" : "Start practice"}{" "}
+                <ChevronRight size={20} />
               </button>
             </div>
           </div>
@@ -647,7 +812,9 @@ function ComputerWritingSession({
             <h1>
               {draft.finishReason === "time-expired"
                 ? "Time is up"
-                : "Practice completed"}
+                : paperMode
+                  ? "Writing test completed"
+                  : "Practice completed"}
             </h1>
             <p>
               {draft.attemptRecorded
@@ -657,57 +824,81 @@ function ComputerWritingSession({
             <p className="cw-subtle">
               {draft.finishReason === "time-expired"
                 ? "练习已按设定时间自动结束。"
-                : "本次单题练习已完成。"}{" "}
+                : paperMode
+                  ? "两道写作题已提交。"
+                  : "本次单题练习已完成。"}{" "}
               写作未进行自动评分。
             </p>
             <dl className="cw-result-facts">
               <div>
                 <dt>Task</dt>
-                <dd>Part {part}</dd>
+                <dd>{paperMode ? "Parts 1 & 2" : `Part ${part}`}</dd>
               </div>
               <div>
                 <dt>Word count</dt>
-                <dd>{words}</dd>
+                <dd>
+                  {paperMode
+                    ? writingItems
+                        .map(
+                          (task) =>
+                            `${countWords(responseFor(draft, task.id).text)}`,
+                        )
+                        .join(" / ")
+                    : words}
+                </dd>
               </div>
               <div>
                 <dt>Time spent</dt>
                 <dd>{formatTime(clock.elapsedSeconds)}</dd>
               </div>
             </dl>
-            <details className="cw-response-review">
-              <summary>Review your response</summary>
-              <div className="cw-final-essay">
-                {draft.text || "No response entered."}
-              </div>
-              {draft.notes && (
-                <>
-                  <h3>Your notes</h3>
-                  <div className="cw-final-essay">{draft.notes}</div>
-                </>
-              )}
-            </details>
+            {writingItems.map((task) => {
+              const answer = responseFor(draft, task.id);
+              return (
+                <details className="cw-response-review" key={task.id}>
+                  <summary>
+                    Review{" "}
+                    {paperMode
+                      ? `Task ${task.data?.writingPart}`
+                      : "your response"}{" "}
+                    · {countWords(answer.text)} words
+                  </summary>
+                  <div className="cw-final-essay">
+                    {answer.text || "No response entered."}
+                  </div>
+                  {answer.notes && (
+                    <>
+                      <h3>Your notes</h3>
+                      <div className="cw-final-essay">{answer.notes}</div>
+                    </>
+                  )}
+                </details>
+              );
+            })}
             <div className="cw-complete-actions">
               <button
                 className="cw-secondary"
-                disabled={!draft.text}
+                disabled={emptyTasks.length === writingItems.length}
                 onClick={exportEssay}
               >
                 <Download size={17} /> Download response
               </button>
-              <button
-                className="cw-secondary"
-                disabled={
-                  conflict || pendingWrites > 0 || !draft.attemptRecorded
-                }
-                onClick={() => {
-                  persist(freshDraft());
-                  setOptions(null);
-                  setNotesOpen(false);
-                  setSubmissionOpen(false);
-                }}
-              >
-                Start another practice
-              </button>
+              {!paperMode && (
+                <button
+                  className="cw-secondary"
+                  disabled={
+                    conflict || pendingWrites > 0 || !draft.attemptRecorded
+                  }
+                  onClick={() => {
+                    persist(freshDraft());
+                    setOptions(null);
+                    setNotesOpen(false);
+                    setSubmissionOpen(false);
+                  }}
+                >
+                  Start another practice
+                </button>
+              )}
               <button className="cw-primary" onClick={onExit}>
                 Back to learning
               </button>
@@ -718,21 +909,45 @@ function ComputerWritingSession({
         <main className="cw-submission">
           <div className="cw-submission-inner">
             <h1>Review and finish</h1>
-            <p>You are completing a single-task Writing practice.</p>
-            <button
-              className="cw-submission-row"
-              onClick={() => setSubmissionOpen(false)}
-            >
-              <span>
-                <strong>Part {part}</strong>
-                <small>
-                  {words ? `${words} words entered` : "No response entered"}
-                </small>
-              </span>
-              <span>
-                {words ? "Answered" : "Not answered"} <ChevronRight size={20} />
-              </span>
-            </button>
+            <p>
+              {paperMode
+                ? "Review both responses before submitting the Writing test."
+                : "You are completing a single-task Writing practice."}
+            </p>
+            {writingItems.map((task) => {
+              const taskWords = countWords(responseFor(draft, task.id).text);
+              return (
+                <button
+                  key={task.id}
+                  className="cw-submission-row"
+                  onClick={() =>
+                    paperMode ? switchTask(task.id) : setSubmissionOpen(false)
+                  }
+                >
+                  <span>
+                    <strong>Part {task.data?.writingPart || part}</strong>
+                    <small>
+                      {taskWords
+                        ? `${taskWords} words entered`
+                        : "No response entered"}
+                    </small>
+                  </span>
+                  <span>
+                    {taskWords ? "Answered" : "Not answered"}{" "}
+                    <ChevronRight size={20} />
+                  </span>
+                </button>
+              );
+            })}
+            {paperMode && emptyTasks.length > 0 && (
+              <p className="cw-unanswered" role="status">
+                No response entered for{" "}
+                {emptyTasks
+                  .map((task) => `Task ${task.data?.writingPart}`)
+                  .join(" and ")}
+                .
+              </p>
+            )}
             <p className="cw-subtle">
               提交后，作文与本次用时会保存在练习记录中。
               {draft.deadlineAt ? "计时仍在继续。" : ""}
@@ -749,7 +964,8 @@ function ComputerWritingSession({
                 disabled={conflict || pendingWrites > 0}
                 onClick={() => setConfirmFinish(true)}
               >
-                Finish practice <Check size={20} />
+                {paperMode ? "Finish writing test" : "Finish practice"}{" "}
+                <Check size={20} />
               </button>
             </div>
           </div>
@@ -779,8 +995,10 @@ function ComputerWritingSession({
                   id="computer-writing-answer"
                   ref={editorRef}
                   aria-describedby="computer-writing-word-count"
-                  value={draft.text}
-                  readOnly={conflict}
+                  value={response.text}
+                  readOnly={
+                    conflict || draft.status !== "running" || clock.expired
+                  }
                   onChange={(event) => edit("text", event.target.value)}
                   spellCheck={false}
                   autoCorrect="off"
@@ -805,15 +1023,32 @@ function ComputerWritingSession({
             </div>
           </main>
           <footer className="cw-navigation">
-            <button
-              className="cw-task-tab"
-              aria-current="page"
-              onClick={() => editorRef.current?.focus()}
-            >
-              <strong>Part {part}</strong>
-              <span>{words ? `${words} words` : "Not answered"}</span>
-            </button>
-            <span className="cw-single-task">Single-task practice</span>
+            <div className="cw-task-tabs" aria-label="Writing tasks">
+              {writingItems.map((task) => {
+                const taskWords = countWords(responseFor(draft, task.id).text);
+                return (
+                  <button
+                    key={task.id}
+                    className="cw-task-tab"
+                    aria-current={task.id === item.id ? "page" : undefined}
+                    disabled={conflict}
+                    onClick={() =>
+                      paperMode
+                        ? switchTask(task.id)
+                        : editorRef.current?.focus()
+                    }
+                  >
+                    <strong>Part {task.data?.writingPart || part}</strong>
+                    <span>
+                      {taskWords ? `${taskWords} words` : "Not answered"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <span className="cw-single-task">
+              {paperMode ? "Two-task Writing test" : "Single-task practice"}
+            </span>
             <button
               className="cw-finish-nav"
               aria-label="Go to submission page"
@@ -829,7 +1064,7 @@ function ComputerWritingSession({
       {notesOpen && draft.status === "running" && (
         <aside className="cw-notes" aria-label="Notes">
           <div>
-            <h2>Notes</h2>
+            <h2>Notes{paperMode ? ` · Task ${part}` : ""}</h2>
             <button
               aria-label="Close notes"
               onClick={() => setNotesOpen(false)}
@@ -846,8 +1081,8 @@ function ComputerWritingSession({
           </label>
           <textarea
             id="computer-writing-notes"
-            value={draft.notes}
-            readOnly={conflict}
+            value={response.notes}
+            readOnly={conflict || draft.status !== "running" || clock.expired}
             onChange={(event) => edit("notes", event.target.value)}
             spellCheck={false}
             autoCorrect="off"
@@ -961,7 +1196,11 @@ function ComputerWritingSession({
             aria-labelledby="cw-dialog-title"
           >
             <h2 id="cw-dialog-title">
-              {confirmFinish ? "Finish this practice?" : "Leave this practice?"}
+              {confirmFinish
+                ? paperMode
+                  ? "Submit both writing tasks?"
+                  : "Finish this practice?"
+                : "Leave this practice?"}
             </h2>
             <p>
               {confirmFinish
@@ -974,7 +1213,15 @@ function ComputerWritingSession({
                 be submitted when you return if the deadline has passed.
               </p>
             )}
-            {confirmFinish && !words && <p>No response has been entered.</p>}
+            {confirmFinish && emptyTasks.length > 0 && (
+              <p>
+                No response has been entered for{" "}
+                {emptyTasks
+                  .map((task) => `Task ${task.data?.writingPart || part}`)
+                  .join(" and ")}
+                .
+              </p>
+            )}
             <div>
               <button
                 className="cw-secondary"
@@ -990,7 +1237,11 @@ function ComputerWritingSession({
                 disabled={pendingWrites > 0 || (confirmFinish && conflict)}
                 onClick={() => (confirmFinish ? finish("manual") : onExit())}
               >
-                {confirmFinish ? "Finish practice" : "Leave practice"}
+                {confirmFinish
+                  ? paperMode
+                    ? "Submit both tasks"
+                    : "Finish practice"
+                  : "Leave practice"}
               </button>
             </div>
           </section>
@@ -1000,9 +1251,34 @@ function ComputerWritingSession({
   );
 }
 
-export default function ComputerWriting(props: {
-  item: StudyItem;
-  onExit: () => void;
-}) {
+export default function ComputerWriting(props: ComputerWritingProps) {
+  if (props.paperMode) {
+    const items = [...props.paperMode.items].sort(
+      (a, b) => Number(a.data?.writingPart) - Number(b.data?.writingPart),
+    );
+    if (
+      items.length !== 2 ||
+      items[0].id === items[1].id ||
+      items.some((item) => item.kind !== "writing") ||
+      Number(items[0].data?.writingPart) !== 1 ||
+      Number(items[1].data?.writingPart) !== 2 ||
+      !Number.isFinite(props.paperMode.startedAt) ||
+      props.paperMode.startedAt <= 0
+    ) {
+      return (
+        <div role="alert">
+          Writing test requires Task 1, Task 2 and a valid start time.{" "}
+          <button onClick={props.onExit}>Back</button>
+        </div>
+      );
+    }
+    return (
+      <ComputerWritingSession
+        key={`${props.paperMode.paperId}:${props.paperMode.runId}`}
+        {...props}
+        paperMode={{ ...props.paperMode, items }}
+      />
+    );
+  }
   return <ComputerWritingSession key={props.item.id} {...props} />;
 }

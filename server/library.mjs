@@ -3,6 +3,8 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { demoItems } from "./demo.mjs";
 import { generalTrainingItems } from "./general-training.mjs";
+import { paperDemoItems } from "./paper-demo.mjs";
+import { buildPaperLibrary } from "./papers.mjs";
 import {
   classifyTestTrack,
   testTrackEvidence,
@@ -59,6 +61,7 @@ async function readInsideJSON(file, directory) {
 async function archiveTrackIndex(root, organized) {
   const papers = new Map();
   const memberships = new Map();
+  const records = new Map();
   const add = (map, key, track) => {
     if (typeof key !== "string" || !key || key.length > 200) return;
     const values = map.get(key) || new Set();
@@ -71,13 +74,31 @@ async function archiveTrackIndex(root, organized) {
       const track = classifyTestTrack({ kind: "reading", title: raw.title });
       if (!["academic", "general"].includes(track)) continue;
       for (const collection of raw.data?.paperList || [])
-        for (const paper of collection.testPapers || [])
-          add(papers, String(paper.paperId ?? ""), track);
+        for (const paper of collection.testPapers || []) {
+          const sourceId = String(paper.paperId ?? "");
+          add(papers, sourceId, track);
+          if (!papers.has(sourceId)) continue;
+          const record = records.get(sourceId) || {
+            sourceId,
+            title: paper.paperName,
+            collection: collection.topicName,
+            tracks: papers.get(sourceId),
+            links: {},
+            issues: [],
+          };
+          if (
+            record.title !== paper.paperName ||
+            record.collection !== collection.topicName
+          )
+            record.issues.push("同一试卷在目录中的名称或合集存在冲突。");
+          records.set(sourceId, record);
+        }
     } catch {
       // Missing or malformed classification evidence leaves items unclassified.
     }
   }
-  if (!papers.size) return memberships;
+  const result = () => ({ memberships, papers: [...records.values()] });
+  if (!papers.size) return result();
   let requests;
   const catalogRoot = path.join(root, "data/目录");
   const rawRoot = path.join(root, "data/raw/hcp");
@@ -87,16 +108,18 @@ async function archiveTrackIndex(root, organized) {
       catalogRoot,
     );
   } catch {
-    return memberships;
+    return result();
   }
-  if (!Array.isArray(requests)) return memberships;
+  if (!Array.isArray(requests)) return result();
   for (const request of requests) {
     const kind =
-      request?.path === "/hcp/qsBank/passages/examPassagesV2"
-        ? "reading"
-        : request?.path === "/hcp/qsBank/writings/examWritingsV2"
-          ? "writing"
-          : null;
+      request?.path === "/hcp/qsBank/listening/examListeningV2"
+        ? "listening"
+        : request?.path === "/hcp/qsBank/passages/examPassagesV2"
+          ? "reading"
+          : request?.path === "/hcp/qsBank/writings/examWritingsV2"
+            ? "writing"
+            : null;
     if (
       !kind ||
       !/^data\/raw\/hcp\/[a-f0-9]{64}\.json$/.test(request.file || "")
@@ -107,23 +130,43 @@ async function archiveTrackIndex(root, organized) {
         typeof request.params === "string"
           ? JSON.parse(request.params)
           : request.params;
-      const tracks = papers.get(String(params?.testPaperId ?? ""));
+      const paperId = String(params?.testPaperId ?? "");
+      const tracks = papers.get(paperId);
       if (!tracks?.size) continue;
       const response = await readInsideJSON(
         path.join(root, request.file),
         rawRoot,
       );
       if (response.status !== 0 || !Array.isArray(response.content)) continue;
+      const links = [];
       for (const row of response.content) {
-        const id = row?.[kind === "reading" ? "passagesId" : "writingId"];
+        const id =
+          row?.[
+            {
+              listening: "listeningId",
+              reading: "passagesId",
+              writing: "writingId",
+            }[kind]
+          ];
         if (typeof id !== "string" || !id || id.length > 200) continue;
+        links.push({
+          sourceId: id,
+          part: Number(row[kind === "writing" ? "writingPart" : "part"]),
+        });
         for (const track of tracks) add(memberships, `${kind}:${id}`, track);
       }
+      const record = records.get(paperId);
+      if (
+        record.links[kind] &&
+        JSON.stringify(record.links[kind]) !== JSON.stringify(links)
+      )
+        record.issues.push("同一试卷存在相互冲突的材料关联记录。");
+      else record.links[kind] = links;
     } catch {
       // The study material itself remains usable when provenance is unavailable.
     }
   }
-  return memberships;
+  return result();
 }
 
 function archiveItemTrack(item, data, memberships) {
@@ -215,9 +258,33 @@ export async function validateArchive(root) {
 }
 
 export async function loadLibrary({ archiveRoot, forceDemo = false } = {}) {
+  const originalItem = (id) => paperDemoItems.find((item) => item.id === id);
+  const originalAudioExists = async (item) => {
+    if (item.data?.audioUrl !== "/media/demo-listening.wav") return false;
+    try {
+      const directory = await fs.realpath(
+        new URL("./assets/", import.meta.url),
+      );
+      const file = await fs.realpath(
+        new URL("./assets/demo-listening.wav", import.meta.url),
+      );
+      if (!inside(directory, file)) return false;
+      const stat = await fs.stat(file);
+      return stat.isFile() && stat.size > 0;
+    } catch {
+      return false;
+    }
+  };
   if (!archiveRoot || forceDemo) {
     const items = originalItems.map(publicItem);
+    const getItem = async (id) =>
+      originalItem(id) || originalItems.find((item) => item.id === id) || null;
+    const papers = await buildPaperLibrary({
+      getItem,
+      audioExists: originalAudioExists,
+    });
     return {
+      ...papers,
       mode: "demo",
       archiveRoot: null,
       mediaRoot: null,
@@ -230,8 +297,7 @@ export async function loadLibrary({ archiveRoot, forceDemo = false } = {}) {
           "当前为原创演示材料；可在本机导入已有学习归档。AI 评分及真人服务未接入。",
         ],
       },
-      getItem: async (id) =>
-        originalItems.find((item) => item.id === id) || null,
+      getItem,
     };
   }
   const root = await validateArchive(archiveRoot);
@@ -240,8 +306,10 @@ export async function loadLibrary({ archiveRoot, forceDemo = false } = {}) {
   const globalMedia = new Map();
   const pronunciations = new Map();
   const records = new Map();
+  const sourceItems = new Map();
   const items = generalItems.map(publicItem);
-  const trackMemberships = await archiveTrackIndex(root, organized);
+  const trackIndex = await archiveTrackIndex(root, organized);
+  const trackMemberships = trackIndex.memberships;
   const issues = [];
   const allowedMedia = new Set();
   let badDocuments = 0;
@@ -314,6 +382,20 @@ export async function loadLibrary({ archiveRoot, forceDemo = false } = {}) {
             source: "archive",
           };
           item.testTrack = archiveItemTrack(item, data, trackMemberships);
+          if (["listening", "reading", "writing"].includes(kind)) {
+            const sourceId =
+              data[
+                {
+                  listening: "listeningId",
+                  reading: "passagesId",
+                  writing: "writingId",
+                }[kind]
+              ];
+            if (typeof sourceId === "string" && sourceId) {
+              const key = `${kind}:${sourceId}`;
+              sourceItems.set(key, [...(sourceItems.get(key) || []), id]);
+            }
+          }
           items.push(item);
           records.set(id, {
             file,
@@ -349,32 +431,63 @@ export async function loadLibrary({ archiveRoot, forceDemo = false } = {}) {
     "仅导入已归档的学习材料；训练营、账号信息、原软件个人记录不在导入范围。",
     "部分完整口语范文、中文翻译与原始课件未包含在归档中；AI 评分及真人服务未接入。",
   );
+  const getItem = async (id) => {
+    const original =
+      originalItem(id) || generalItems.find((item) => item.id === id);
+    if (original) return original;
+    const record = records.get(id);
+    if (!record) return null;
+    const raw = await readSafe(record.file);
+    const originalData =
+      record.index === null ? raw.data : raw.data[record.index];
+    const data = sanitize(originalData, globalMedia);
+    const localMedia = Object.fromEntries(record.media);
+    const rows = data?.items || data?.sentences || [];
+    if (["vocabulary", "sentences", "grammar"].includes(record.item.kind)) {
+      for (const row of rows) {
+        const type = record.item.kind === "vocabulary" ? "word" : "sentence";
+        const targetId = type === "word" ? row.headWord : row.sentenceId;
+        row.audioUrls = pronunciations.get(`${type}:${targetId}`) || {};
+      }
+    }
+    return { ...record.item, data, localMedia };
+  };
+  const itemCache = new Map();
+  const papers = await buildPaperLibrary({
+    sourcePapers: trackIndex.papers,
+    sourceItems,
+    getItem: async (id) => {
+      if (!itemCache.has(id)) itemCache.set(id, getItem(id));
+      return itemCache.get(id);
+    },
+    audioExists: async (item) => {
+      if (item.source === "original") return originalAudioExists(item);
+      const url = item.data?.audioUrl;
+      if (typeof url !== "string" || !url.startsWith("/media/")) return false;
+      const relative = url.slice(7);
+      if (
+        !allowedMedia.has(relative) ||
+        !/\.(?:mp3|mpga|wav|m4a|ogg)$/i.test(relative)
+      )
+        return false;
+      try {
+        const file = await fs.realpath(path.join(mediaRoot, relative));
+        if (!inside(mediaRoot, file)) return false;
+        const stat = await fs.stat(file);
+        return stat.isFile() && stat.size > 0;
+      } catch {
+        return false;
+      }
+    },
+  });
   return {
+    ...papers,
     mode: "archive",
     archiveRoot: root,
     mediaRoot,
     allowedMedia,
     publicLibrary: { items, mode: "archive", counts: tally(items), issues },
-    getItem: async (id) => {
-      const original = generalItems.find((item) => item.id === id);
-      if (original) return original;
-      const record = records.get(id);
-      if (!record) return null;
-      const raw = await readSafe(record.file);
-      const originalData =
-        record.index === null ? raw.data : raw.data[record.index];
-      const data = sanitize(originalData, globalMedia);
-      const localMedia = Object.fromEntries(record.media);
-      const rows = data?.items || data?.sentences || [];
-      if (["vocabulary", "sentences", "grammar"].includes(record.item.kind)) {
-        for (const row of rows) {
-          const type = record.item.kind === "vocabulary" ? "word" : "sentence";
-          const targetId = type === "word" ? row.headWord : row.sentenceId;
-          row.audioUrls = pronunciations.get(`${type}:${targetId}`) || {};
-        }
-      }
-      return { ...record.item, data, localMedia };
-    },
+    getItem,
   };
 }
 export function tally(items) {

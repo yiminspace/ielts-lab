@@ -143,6 +143,13 @@
 .study-essay:focus {
   box-shadow: none !important;
 }
+.study-history-notes {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+  padding: 12px 0;
+  margin: 0;
+}
 .study-icon-button {
   padding: 7px !important;
 }
