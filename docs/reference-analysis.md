@@ -50,3 +50,13 @@ HTML 的散列标识单次响应；动态初始化内容可能使以后请求的
 另有可提交的原创整卷短样例，明确标注 16 道听力、18 道阅读和 2 题写作。四个听力部分重复同一段约 17 秒原创音频；阅读和写作仍各计时 60 分钟。它用于验证跨部分和跨科控制，不冒充 40 题完整练习或官方音频。
 
 本轮已具备纯规则和后端接口测试；实际浏览器整卷验收记录由 [功能与验证](coverage.md)单独维护。写作批改、考官口语评估、考点身份核验、监考和官方成绩仍不在实现范围。官方文字说明能够支持规则选择，不能证明本地页面已与正式考场逐像素或逐事件一致。
+
+## 阅读、写作界面补充对照（2026-10-18）
+
+本轮重新读取 [IELTS 官方 G 类样题页](https://ielts.org/take-a-test/preparation-resources/sample-test-questions/general-training-test)。页面分别提供 G 类单题型样例和整套熟悉测试链接；其中整套平台样例明确使用 Academic 阅读和写作。不能把两种入口的题目类型混为一谈。
+
+实际在浏览器打开官方 [Writing demo](https://demo-ielts.inspera.com/player/?assessmentRunId=131013741&context=exam)，直接观察到：顶部 Test taker ID 和 Options/Notes；Part 指令条；左侧题干、右侧作文框与 Words 计数；中间可调分隔条；右下 Previous/Next；底部 Part 标签和 Review your answers。Options 提供 Go to submission page、Contrast、Text size，Contrast 的三个选项为 Black on white、White on black、Yellow on black。这些观察支撑布局和控件的位置，不代表已核对每个状态或正式考场系统。截图仅保存在忽略的本地参考目录。
+
+公开 G 阅读入口 `assessmentRunId=189732383` 与 G 写作入口 `assessmentRunId=189733708` 均返回 HTTP 200，直接引用相同的 `releases/3.60.0` 启动脚本、主脚本和样式。此次取回的 `player.css` 仍为 761,075 字节，SHA-256 与上表相同。随后在浏览器实际取得 G 类 Writing Part 1 的页面结构和截图，确认书信要点、作文框、分隔条、Words、右下 Previous/Next 与底部 Review。该单题样例没有显示 Notes 入口，而上述完整 Writing demo 显示 Notes；不同演示配置确有差异。G 阅读样例的动态页面观察多次超时，未完成其交互验收，不能由共享 CSS 推断行为一致。未请求隐藏试题接口或源码映射，也没有将官方实现、题目或图片加入仓库。
+
+本地改进使用原创代码：阅读底部按当前 Part 展开题号，其他 Part 显示已答数量；补齐键盘焦点与分栏操作；写作增加可调分栏、右下切题按钮，并保留每题独立编辑器。选文高亮、笔记、操作帮助属于本应用的功能近似；正式规则仍以官方说明为准，不能把公开不计时演示直接当成考场计时器。

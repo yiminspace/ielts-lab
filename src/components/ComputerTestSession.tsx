@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
   type MouseEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import DOMPurify from "dompurify";
 import {
@@ -51,6 +52,8 @@ import {
   paperReadingDeadline,
   advancePaperAudio,
   validatePaperParts,
+  navigationDestination,
+  splitByKeyboard,
   type QuestionNav,
 } from "../lib/computer-test.mjs";
 import "../computer-test.css";
@@ -65,6 +68,8 @@ type Selection = {
   x: number;
   y: number;
   markId?: string;
+  keyboard?: boolean;
+  returnFocus?: HTMLElement;
 };
 type Session = {
   version: 1;
@@ -87,7 +92,7 @@ type Session = {
   viewedPart?: number;
 };
 type Screen = "setup" | "active" | "submission" | "complete";
-type Modal = "options" | "contrast" | "text" | "exit" | null;
+type Modal = "options" | "contrast" | "text" | "help" | "exit" | null;
 const safeHTML = (html: unknown) =>
   DOMPurify.sanitize(String(html || ""), {
     FORBID_TAGS: [
@@ -226,8 +231,19 @@ function Content({
       return createElement(tag, props);
     return createElement(tag, props, ...Array.from(el.childNodes).map(render));
   }
-  function select(event: MouseEvent<HTMLDivElement>, context = false) {
-    if (!onSelection || !container.current) return;
+  function select(
+    event: MouseEvent<HTMLDivElement> | ReactKeyboardEvent<HTMLDivElement>,
+    context = false,
+    keyboard = false,
+  ) {
+    if (
+      !onSelection ||
+      !container.current ||
+      (event.target as HTMLElement).closest(
+        "input,select,textarea,[data-ct-control]",
+      )
+    )
+      return;
     const selected = window.getSelection();
     if (selected?.rangeCount && !selected.isCollapsed) {
       const range = selected.getRangeAt(0);
@@ -245,6 +261,11 @@ function Content({
             start: start.length,
             end: start.length + text.length,
             text,
+            keyboard,
+            returnFocus:
+              document.activeElement instanceof HTMLElement
+                ? document.activeElement
+                : container.current,
             x: Math.min(bounds.left, window.innerWidth - 255),
             y: Math.min(bounds.bottom + 8, window.innerHeight - 110),
           });
@@ -262,8 +283,23 @@ function Content({
         ...marked,
         surface,
         markId: marked.id,
-        x: Math.min(event.clientX, window.innerWidth - 255),
-        y: Math.min(event.clientY + 8, window.innerHeight - 110),
+        keyboard,
+        returnFocus:
+          document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : container.current,
+        x: Math.min(
+          "clientX" in event
+            ? event.clientX
+            : markElement!.getBoundingClientRect().left,
+          window.innerWidth - 255,
+        ),
+        y: Math.min(
+          ("clientY" in event
+            ? event.clientY
+            : markElement!.getBoundingClientRect().bottom) + 8,
+          window.innerHeight - 110,
+        ),
       });
     }
   }
@@ -273,6 +309,27 @@ function Content({
       ref={container}
       onMouseUp={(event) => select(event)}
       onContextMenu={(event) => select(event, true)}
+      onKeyUp={(event) => {
+        if (
+          event.shiftKey &&
+          [
+            "ArrowLeft",
+            "ArrowRight",
+            "ArrowUp",
+            "ArrowDown",
+            "Home",
+            "End",
+          ].includes(event.key)
+        )
+          select(event);
+      }}
+      onKeyDown={(event) => {
+        if (
+          event.key === "ContextMenu" ||
+          (event.shiftKey && event.key === "F10")
+        )
+          select(event, true, true);
+      }}
     >
       {Array.from(body.childNodes).map(render)}
     </div>
@@ -423,7 +480,14 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
   const root = useRef<HTMLDivElement>(null),
     audio = useRef<HTMLAudioElement>(null),
     panes = useRef<HTMLDivElement>(null),
-    dialog = useRef<HTMLDivElement>(null);
+    dialog = useRef<HTMLDivElement>(null),
+    selectionMenu = useRef<HTMLDivElement>(null),
+    notesInput = useRef<HTMLTextAreaElement>(null),
+    optionsTrigger = useRef<HTMLButtonElement>(null),
+    notesTrigger = useRef<HTMLButtonElement>(null);
+  const modalReturnFocus = useRef<HTMLElement | null>(null),
+    previousModal = useRef<Modal>(null),
+    splitCleanup = useRef<(() => void) | null>(null);
   const sessionRef = useRef(session),
     screenRef = useRef(screen),
     audioPosition = useRef(session.audioPosition || 0),
@@ -596,12 +660,51 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
   }, [audioIndex, src]);
   useEffect(() => {
     if (modal) {
+      if (!previousModal.current)
+        modalReturnFocus.current =
+          document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : optionsTrigger.current;
       setSelection(null);
       requestAnimationFrame(() =>
         dialog.current?.querySelector<HTMLButtonElement>("button")?.focus(),
       );
+    } else if (previousModal.current) {
+      const target = modalReturnFocus.current;
+      requestAnimationFrame(() => {
+        if (target?.isConnected) target.focus({ preventScroll: true });
+        else optionsTrigger.current?.focus({ preventScroll: true });
+      });
     }
+    previousModal.current = modal;
   }, [modal]);
+  useEffect(() => {
+    if (!selection) return;
+    if (selection.keyboard)
+      requestAnimationFrame(() =>
+        selectionMenu.current
+          ?.querySelector<HTMLButtonElement>("button")
+          ?.focus(),
+      );
+    const close = (event: PointerEvent | KeyboardEvent) => {
+      if (event instanceof KeyboardEvent) {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        selection.returnFocus?.focus({ preventScroll: true });
+      } else if (selectionMenu.current?.contains(event.target as Node)) return;
+      setSelection(null);
+    };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", close);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [selection]);
+  useEffect(() => {
+    if (notesOpen) requestAnimationFrame(() => notesInput.current?.focus());
+  }, [notesOpen]);
+  useEffect(() => () => splitCleanup.current?.(), []);
   useEffect(() => {
     if (!modal) return;
     const handler = (event: KeyboardEvent) => {
@@ -888,7 +991,11 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
     audio.current?.pause();
     onExit();
   }
-  function go(number: number | undefined, restoreScroll = false) {
+  function go(
+    number: number | undefined,
+    restoreScroll = false,
+    focusAnswer = true,
+  ) {
     if (
       number === undefined ||
       conflictRef.current ||
@@ -938,7 +1045,83 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
         : element?.querySelector<HTMLElement>(
             "input:not(:disabled),select,button",
           );
-      (control as HTMLElement | undefined)?.focus({ preventScroll: true });
+      if (focusAnswer)
+        (control as HTMLElement | undefined)?.focus({ preventScroll: true });
+    });
+  }
+  function navigateWithKeyboard(
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    navs: QuestionNav[],
+    number: number,
+  ) {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
+      return;
+    const next = navigationDestination(
+      navs.map((nav) => nav.number),
+      number,
+      event.key,
+    );
+    if (next === null) return;
+    event.preventDefault();
+    go(next, false, false);
+    requestAnimationFrame(() =>
+      document.getElementById(`ct-nav-${next}`)?.focus({ preventScroll: true }),
+    );
+  }
+  function partWithKeyboard(
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    index: number,
+  ) {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
+      return;
+    const next = navigationDestination(
+      normalizedParts.map((_part, i) => i),
+      index,
+      event.key,
+    );
+    if (next === null) return;
+    event.preventDefault();
+    go(normalizedParts[next].first, true, false);
+    requestAnimationFrame(() =>
+      document
+        .getElementById(`ct-part-nav-${next}`)
+        ?.focus({ preventScroll: true }),
+    );
+  }
+  function questionButtons(navs: QuestionNav[]) {
+    return navs.map((nav) => {
+      const done = answeredQuestion(
+        nav,
+        rowMap.get(nav.rowId)!,
+        session.answers,
+      );
+      const marked = session.marked.includes(nav.number);
+      return (
+        <button
+          key={nav.number}
+          id={`ct-nav-${nav.number}`}
+          className={`${activeNumber === nav.number && screen === "active" ? "ct-active" : ""} ${done ? "ct-is-answered" : ""} ${marked ? "ct-marked" : ""}`}
+          aria-label={`Question ${nav.number}, ${done ? "answered" : "not answered"}${marked ? ", marked for review" : ""}`}
+          aria-current={
+            activeNumber === nav.number && screen === "active"
+              ? "step"
+              : undefined
+          }
+          tabIndex={
+            activeNumber === nav.number ||
+            (!navs.some((entry) => entry.number === activeNumber) &&
+              nav.number === navs[0]?.number)
+              ? 0
+              : -1
+          }
+          onKeyDown={(event) => navigateWithKeyboard(event, navs, nav.number)}
+          onClick={() => go(nav.number)}
+        >
+          <span className="ct-question-progress" />
+          {nav.number}
+          {marked && <i aria-hidden="true" />}
+        </button>
+      );
     });
   }
   function focusRow(row: QuestionRow) {
@@ -1000,6 +1183,10 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
     }));
     setSelection(null);
     window.getSelection()?.removeAllRanges();
+    if (value.keyboard)
+      requestAnimationFrame(() =>
+        value.returnFocus?.focus({ preventScroll: true }),
+      );
   }
   function clearHighlight() {
     if (!selection) return;
@@ -1018,6 +1205,10 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
     }));
     setSelection(null);
     window.getSelection()?.removeAllRanges();
+    if (value.keyboard)
+      requestAnimationFrame(() =>
+        value.returnFocus?.focus({ preventScroll: true }),
+      );
   }
   function noteSelection() {
     if (selection)
@@ -1026,6 +1217,7 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
       });
     setNotesOpen(true);
     setSelection(null);
+    requestAnimationFrame(() => notesInput.current?.focus());
   }
   function renderContent(
     html: unknown,
@@ -1095,6 +1287,8 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
           id={id}
           className="ct-gap"
           autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
           spellCheck={false}
           disabled={submitting}
           aria-label={`Question ${row.number}${row.slots > 1 ? ` blank ${slot + 1}` : ""}`}
@@ -1282,8 +1476,12 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
   }
   function changeSplit(event: React.PointerEvent<HTMLDivElement>) {
     const bounds = panes.current?.getBoundingClientRect();
-    if (!bounds) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
+    if (!bounds || event.button !== 0) return;
+    event.preventDefault();
+    splitCleanup.current?.();
+    const handle = event.currentTarget;
+    handle.focus({ preventScroll: true });
+    handle.setPointerCapture(event.pointerId);
     const move = (e: PointerEvent) =>
       setSplit(
         Math.max(
@@ -1294,9 +1492,15 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
     const stop = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+      if (handle.hasPointerCapture(event.pointerId))
+        handle.releasePointerCapture(event.pointerId);
+      splitCleanup.current = null;
     };
+    splitCleanup.current = stop;
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", stop, { once: true });
+    window.addEventListener("pointercancel", stop, { once: true });
   }
 
   return (
@@ -1614,6 +1818,7 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
                 </label>
               )}
               <button
+                ref={optionsTrigger}
                 title="Options"
                 aria-label="Options"
                 onClick={() => setModal("options")}
@@ -1621,6 +1826,7 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
                 <Menu size={25} />
               </button>
               <button
+                ref={notesTrigger}
                 title={notesOpen ? "Hide notes" : "Show notes"}
                 aria-label={notesOpen ? "Hide notes" : "Show notes"}
                 className={notesOpen ? "ct-pressed" : ""}
@@ -1677,6 +1883,9 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
                       <>
                         <div
                           className="ct-reading-passage"
+                          role="region"
+                          aria-label={`Reading text, Part ${part}`}
+                          tabIndex={0}
                           style={{ flexBasis: `${split}%` }}
                         >
                           {renderContent(
@@ -1691,41 +1900,66 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
                           aria-orientation="vertical"
                           aria-valuemin={30}
                           aria-valuemax={70}
-                          aria-valuenow={split}
+                          aria-valuenow={Math.round(split)}
+                          aria-valuetext={`Reading text ${Math.round(split)} percent, questions ${100 - Math.round(split)} percent`}
+                          title="Drag to resize. Arrow keys adjust; Home/End set limits; Enter resets."
                           tabIndex={0}
                           onPointerDown={changeSplit}
+                          onDoubleClick={() => setSplit(50)}
                           onKeyDown={(event) => {
-                            if (
-                              event.key === "ArrowLeft" ||
-                              event.key === "ArrowRight"
-                            ) {
+                            const next = splitByKeyboard(split, event.key);
+                            if (next !== null) {
                               event.preventDefault();
-                              setSplit((value) =>
-                                Math.max(
-                                  30,
-                                  Math.min(
-                                    70,
-                                    value +
-                                      (event.key === "ArrowLeft" ? -2 : 2),
-                                  ),
-                                ),
-                              );
+                              setSplit(next);
                             }
                           }}
                         />
                       </>
                     )}
-                    <div className="ct-questions">
-                      {visibleGroups.map(groupView)}
-                      <div className="ct-review-marker">
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={session.marked.includes(activeNumber)}
-                            onChange={() => markQuestion(activeNumber)}
-                          />{" "}
-                          Mark question {activeNumber} for review
-                        </label>
+                    <div className="ct-question-column">
+                      <div
+                        className="ct-questions"
+                        role="region"
+                        aria-label={`Questions ${first} to ${last}`}
+                        tabIndex={0}
+                      >
+                        {visibleGroups.map(groupView)}
+                        <div className="ct-review-marker">
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={session.marked.includes(activeNumber)}
+                              onChange={() => markQuestion(activeNumber)}
+                            />{" "}
+                            Mark question {activeNumber} for review
+                          </label>
+                        </div>
+                      </div>
+                      <div className="ct-step-controls">
+                        <button
+                          aria-label="Previous question"
+                          disabled={activeNumber === firstOverall}
+                          onClick={() => {
+                            const index = navigation.findIndex(
+                              (nav) => nav.number === activeNumber,
+                            );
+                            go(navigation[index - 1]?.number);
+                          }}
+                        >
+                          <ArrowLeft size={27} />
+                        </button>
+                        <button
+                          aria-label="Next question"
+                          disabled={activeNumber === lastOverall}
+                          onClick={() => {
+                            const index = navigation.findIndex(
+                              (nav) => nav.number === activeNumber,
+                            );
+                            go(navigation[index + 1]?.number);
+                          }}
+                        >
+                          <ArrowRight size={27} />
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -1736,12 +1970,16 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
                       <strong>Notes{paperMode ? " · all parts" : ""}</strong>
                       <button
                         aria-label="Hide notes"
-                        onClick={() => setNotesOpen(false)}
+                        onClick={() => {
+                          setNotesOpen(false);
+                          notesTrigger.current?.focus({ preventScroll: true });
+                        }}
                       >
                         <X size={20} />
                       </button>
                     </div>
                     <textarea
+                      ref={notesInput}
                       aria-label="Notes"
                       placeholder="Write your notes here..."
                       value={session.notes}
@@ -1751,32 +1989,6 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
                     />
                   </aside>
                 )}
-              </div>
-              <div className="ct-step-controls">
-                <button
-                  aria-label="Previous question"
-                  disabled={activeNumber === firstOverall}
-                  onClick={() => {
-                    const index = navigation.findIndex(
-                      (nav) => nav.number === activeNumber,
-                    );
-                    go(navigation[index - 1]?.number);
-                  }}
-                >
-                  <ArrowLeft size={27} />
-                </button>
-                <button
-                  aria-label="Next question"
-                  disabled={activeNumber === lastOverall}
-                  onClick={() => {
-                    const index = navigation.findIndex(
-                      (nav) => nav.number === activeNumber,
-                    );
-                    go(navigation[index + 1]?.number);
-                  }}
-                >
-                  <ArrowRight size={27} />
-                </button>
               </div>
             </>
           ) : screen === "submission" ? (
@@ -1897,46 +2109,78 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
             <footer
               className={`ct-footer ${paperMode ? "ct-paper-footer" : ""}`}
             >
-              <div className="ct-part">
-                {paperMode ? (
-                  <div className="ct-paper-parts" aria-label="Paper parts">
-                    {normalizedParts.map((part, index) => (
-                      <button
-                        key={part.itemId}
-                        className={
-                          viewedPart === index ? "ct-current-part" : ""
-                        }
-                        onClick={() => go(part.first, true)}
-                        aria-label={`Part ${index + 1}, questions ${part.first} to ${part.last}`}
+              {paperMode ? (
+                <nav
+                  className="ct-paper-navigation"
+                  aria-label="Paper parts and questions"
+                >
+                  {normalizedParts.map((entry, index) => {
+                    const navs = navigation.filter(
+                      (nav) =>
+                        nav.number >= entry.first && nav.number <= entry.last,
+                    );
+                    const completed = navs.filter((nav) =>
+                      answeredQuestion(
+                        nav,
+                        rowMap.get(nav.rowId)!,
+                        session.answers,
+                      ),
+                    ).length;
+                    const reviewCount = navs.filter((nav) =>
+                      session.marked.includes(nav.number),
+                    ).length;
+                    const expanded = index === viewedPart;
+                    return (
+                      <div
+                        className={`ct-nav-part ${expanded ? "ct-nav-part-expanded" : ""}`}
+                        key={entry.itemId}
                       >
-                        Part {index + 1}
-                        {listening &&
-                          audioIndex === index &&
-                          !session.audioEnded && <Volume2 size={13} />}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
+                        <button
+                          className="ct-part-heading"
+                          id={`ct-part-nav-${index}`}
+                          aria-expanded={expanded}
+                          aria-controls={`ct-part-questions-${index}`}
+                          aria-label={`Part ${index + 1}, ${completed} of ${navs.length} answered${reviewCount ? `, ${reviewCount} marked for review` : ""}`}
+                          onClick={() => go(entry.first, true)}
+                          onKeyDown={(event) => partWithKeyboard(event, index)}
+                        >
+                          <strong>Part {index + 1}</strong>
+                          {!expanded && (
+                            <span>
+                              {completed} of {navs.length}
+                            </span>
+                          )}
+                          {reviewCount > 0 && (
+                            <Flag size={13} aria-hidden="true" />
+                          )}
+                        </button>
+                        <div
+                          className="ct-question-numbers"
+                          id={`ct-part-questions-${index}`}
+                          hidden={!expanded}
+                        >
+                          {questionButtons(navs)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </nav>
+              ) : (
+                <div className="ct-part">
                   <strong>Part {part}</strong>
-                )}
-                <div className="ct-question-numbers">
-                  {navigation.map((nav) => (
-                    <button
-                      key={nav.number}
-                      className={`${activeNumber === nav.number && screen === "active" ? "ct-active" : ""} ${answeredQuestion(nav, rowMap.get(nav.rowId)!, session.answers) ? "ct-is-answered" : ""} ${session.marked.includes(nav.number) ? "ct-marked" : ""}`}
-                      aria-label={`Question ${nav.number}${session.marked.includes(nav.number) ? ", marked for review" : ""}`}
-                      onClick={() => go(nav.number)}
-                    >
-                      <span className="ct-question-progress" />
-                      {nav.number}
-                      {session.marked.includes(nav.number) && <i />}
-                    </button>
-                  ))}
+                  <nav
+                    className="ct-question-numbers"
+                    aria-label="Question navigation"
+                  >
+                    {questionButtons(navigation)}
+                  </nav>
                 </div>
-              </div>
-              <span className="ct-answer-count">
-                {answered} of {navigation.length}
-              </span>
+              )}
+              {!paperMode && (
+                <span className="ct-answer-count">
+                  {answered} of {navigation.length}
+                </span>
+              )}
               <button
                 className="ct-review-submit"
                 aria-label="Review your answers"
@@ -1952,6 +2196,9 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
       {selection && !modal && screen === "active" && (
         <div
           className="ct-text-menu"
+          ref={selectionMenu}
+          role="toolbar"
+          aria-label="Selected text actions"
           style={{
             left: Math.max(8, selection.x),
             top: Math.max(75, selection.y),
@@ -1967,7 +2214,10 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
           <button onClick={clearHighlight}>Clear highlight</button>
           <button
             aria-label="Close selection menu"
-            onClick={() => setSelection(null)}
+            onClick={() => {
+              selection.returnFocus?.focus({ preventScroll: true });
+              setSelection(null);
+            }}
           >
             <X size={14} />
           </button>
@@ -2011,7 +2261,9 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
             aria-label="Back"
             onClick={() =>
               setModal(
-                modal === "contrast" || modal === "text" ? "options" : null,
+                modal === "contrast" || modal === "text" || modal === "help"
+                  ? "options"
+                  : null,
               )
             }
           >
@@ -2032,7 +2284,9 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
                   ? "Contrast"
                   : modal === "text"
                     ? "Text size"
-                    : "Leave this practice?"}
+                    : modal === "help"
+                      ? "Using this practice"
+                      : "Leave this practice?"}
             </h1>
             {modal === "options" ? (
               <div className="ct-option-choices">
@@ -2041,7 +2295,56 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
                 )}
                 <button onClick={() => setModal("contrast")}>Contrast</button>
                 <button onClick={() => setModal("text")}>Text size</button>
+                <button onClick={() => setModal("help")}>Help</button>
                 <button onClick={() => setModal("exit")}>Exit practice</button>
+              </div>
+            ) : modal === "help" ? (
+              <div className="ct-help">
+                <p>These instructions describe IELTS Lab practice controls.</p>
+                <dl>
+                  <dt>Move between questions</dt>
+                  <dd>
+                    Select a question number or use the black Previous and Next
+                    buttons. In the question bar, use Left/Right or Home/End to
+                    move. Select a Part to open its questions.
+                  </dd>
+                  <dt>Review an answer</dt>
+                  <dd>
+                    Use “Mark question for review” below the questions. A dot
+                    stays beside its number. An answered question has a dark
+                    line above its number.
+                  </dd>
+                  {!listening && (
+                    <>
+                      <dt>Reading text and questions</dt>
+                      <dd>
+                        Each side scrolls independently. Drag the divider or
+                        focus it and use Left/Right. Home/End set the limits;
+                        Enter or a double click returns to equal widths.
+                      </dd>
+                    </>
+                  )}
+                  <dt>Highlight and notes</dt>
+                  <dd>
+                    Select text to open the text actions, or use Shift+F10 after
+                    a keyboard selection. Highlight marks the selection; Note
+                    copies it into your notes. Escape closes text actions.
+                  </dd>
+                  {listening && (
+                    <>
+                      <dt>Listening audio</dt>
+                      <dd>
+                        Changing questions does not seek, skip or restart the
+                        recording. Use the volume control to adjust the sound.
+                      </dd>
+                    </>
+                  )}
+                  <dt>Options and timing</dt>
+                  <dd>
+                    Contrast and Text size change the display. Options and notes
+                    do not pause a running timer or audio.
+                  </dd>
+                </dl>
               </div>
             ) : modal === "contrast" ? (
               <div className="ct-option-choices">

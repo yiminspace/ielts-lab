@@ -25,6 +25,7 @@ export interface PaperWritingDraft {
   attemptRecorded: boolean;
   attemptIds: string[];
   revision?: string;
+  promptHighlights?: Record<string, { start: number; end: number }[]>;
 }
 export interface PaperWritingResult {
   attemptIds: string[];

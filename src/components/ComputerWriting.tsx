@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   ArrowLeft,
+  ArrowRight,
+  GripVertical,
   Check,
   ChevronRight,
   ClipboardCheck,
@@ -10,7 +12,9 @@ import {
   X,
 } from "lucide-react";
 import type { StudyItem } from "../types";
-import { RichText } from "../lib/content";
+import ComputerWritingPrompt, {
+  type WritingSelection,
+} from "./ComputerWritingPrompt";
 import {
   getProgress,
   recordAttempt,
@@ -39,6 +43,13 @@ import type {
   PaperWritingDraft,
   PaperWritingResult,
 } from "../lib/computer-writing-paper.mjs";
+import {
+  writingSplit,
+  resizeWritingSplit,
+  changeWritingHighlight,
+  writingHighlightRanges,
+  type WritingHighlight,
+} from "../lib/computer-writing-ui.mjs";
 import "../computer-writing.css";
 
 export type ComputerWritingPaperMode = {
@@ -68,6 +79,7 @@ type SingleWritingDraft = {
   runId: string;
   attemptRecorded: boolean;
   revision?: string;
+  promptHighlights?: Record<string, WritingHighlight[]>;
 };
 type WritingDraft = SingleWritingDraft | PaperWritingDraft;
 type OptionsPage = "menu" | "contrast" | "text-size" | null;
@@ -182,6 +194,16 @@ function ComputerWritingSession({
   const [confirmExit, setConfirmExit] = useState(false);
   const saveError = useSaveError();
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  const editors = useRef<Record<string, HTMLTextAreaElement | null>>({});
+  const panes = useRef<HTMLDivElement>(null);
+  const promptPane = useRef<HTMLElement>(null);
+  const promptScroll = useRef<Record<string, number>>({});
+  const [split, setSplit] = useState(50);
+  const [resizing, setResizing] = useState(false);
+  const [selection, setSelection] = useState<
+    (WritingSelection & { itemId: string }) | null
+  >(null);
+  const notesRef = useRef<HTMLTextAreaElement>(null);
   const optionsRef = useRef<HTMLElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
   const part = Number(item.data?.writingPart) === 1 ? 1 : 2;
@@ -204,6 +226,7 @@ function ComputerWritingSession({
   const recommended = part === 1 ? 20 : 40;
   const minimum = part === 1 ? 150 : 250;
   const words = countWords(response.text);
+  const taskIndex = writingItems.findIndex((task) => task.id === item.id);
   const emptyTasks = writingItems.filter(
     (task) => !countWords(responseFor(draft, task.id).text),
   );
@@ -314,6 +337,9 @@ function ComputerWritingSession({
               answers: {
                 essay: answer.text,
                 notes: answer.notes,
+                __writingHighlights: JSON.stringify(
+                  writingHighlightRanges(current.promptHighlights?.[task.id]),
+                ),
                 paperId: current.paperId,
                 paperRunId: current.runId,
                 writingSession: `${current.paperId}:${current.runId}:writing`,
@@ -367,6 +393,9 @@ function ComputerWritingSession({
           answers: {
             essay: current.text,
             notes: current.notes,
+            __writingHighlights: JSON.stringify(
+              writingHighlightRanges(current.promptHighlights?.[item.id]),
+            ),
             writingSession: current.runId,
           },
           detail: `机考单题写作 · ${countWords(current.text)} 词 · ${current.finishReason === "time-expired" ? "计时结束自动保存" : "完成练习"}`,
@@ -425,11 +454,11 @@ function ComputerWritingSession({
     }
     return false;
   }
-  function edit(field: "text" | "notes", value: string) {
+  function edit(field: "text" | "notes", value: string, taskId = item.id) {
     if (draftRef.current.status !== "running" || checkDeadline()) return;
     persist(
       draftRef.current.mode === "paper-writing"
-        ? editPaperWriting(draftRef.current, item.id, field, value)
+        ? editPaperWriting(draftRef.current, taskId, field, value)
         : { ...draftRef.current, [field]: value },
     );
   }
@@ -438,6 +467,51 @@ function ComputerWritingSession({
     if (draftRef.current.mode === "paper-writing")
       persist(switchPaperWritingTask(draftRef.current, id));
     setSubmissionOpen(false);
+  }
+  function moveSplit(clientX: number) {
+    const bounds = panes.current?.getBoundingClientRect();
+    if (bounds?.width)
+      setSplit(writingSplit(((clientX - bounds.left) / bounds.width) * 100));
+  }
+  function closeSelection() {
+    setSelection(null);
+    window.getSelection()?.removeAllRanges();
+  }
+  function highlight(action: "add" | "remove") {
+    if (
+      !selection ||
+      selection.itemId !== item.id ||
+      draftRef.current.status !== "running" ||
+      checkDeadline()
+    )
+      return;
+    const current = draftRef.current;
+    persist({
+      ...current,
+      promptHighlights: {
+        ...current.promptHighlights,
+        [item.id]: changeWritingHighlight(
+          current.promptHighlights?.[item.id],
+          selection,
+          action,
+        ),
+      },
+    });
+    closeSelection();
+  }
+  function excerptToNotes() {
+    if (
+      !selection ||
+      selection.itemId !== item.id ||
+      draftRef.current.status !== "running" ||
+      checkDeadline()
+    )
+      return;
+    const existing = responseFor(draftRef.current, item.id).notes;
+    edit("notes", `${existing}${existing ? "\n\n" : ""}${selection.text}\n`);
+    setNotesOpen(true);
+    closeSelection();
+    requestAnimationFrame(() => notesRef.current?.focus());
   }
   function start() {
     if (conflictRef.current || draftRef.current.status !== "ready") return;
@@ -537,20 +611,47 @@ function ComputerWritingSession({
     };
   }, []);
   useEffect(() => {
+    editorRef.current = editors.current[item.id] || null;
+    if (promptPane.current)
+      promptPane.current.scrollTop = promptScroll.current[item.id] || 0;
     if (draft.status === "running" && !submissionOpen && !options)
       editorRef.current?.focus();
-  }, [draft.status, submissionOpen]);
+  }, [draft.status, submissionOpen, item.id]);
+  useEffect(() => {
+    setSelection(null);
+  }, [
+    item.id,
+    options,
+    submissionOpen,
+    draft.status,
+    conflict,
+    confirmFinish,
+    confirmExit,
+  ]);
+  useEffect(() => {
+    if (!selection) return;
+    const dismiss = (event: PointerEvent) => {
+      if (
+        event.target instanceof Element &&
+        !event.target.closest(".cw-selection-actions, .cw-selectable-prompt")
+      )
+        setSelection(null);
+    };
+    document.addEventListener("pointerdown", dismiss);
+    return () => document.removeEventListener("pointerdown", dismiss);
+  }, [selection]);
   useEffect(() => {
     const escape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (confirmFinish) setConfirmFinish(false);
+      if (selection) closeSelection();
+      else if (confirmFinish) setConfirmFinish(false);
       else if (confirmExit) setConfirmExit(false);
       else if (options) setOptions(null);
       else setNotesOpen(false);
     };
     document.addEventListener("keydown", escape);
     return () => document.removeEventListener("keydown", escape);
-  }, [confirmFinish, confirmExit, options]);
+  }, [confirmFinish, confirmExit, options, selection]);
   useEffect(() => {
     const modal =
       confirmFinish || confirmExit
@@ -905,161 +1006,319 @@ function ComputerWritingSession({
             </div>
           </div>
         </main>
-      ) : submissionOpen ? (
-        <main className="cw-submission">
-          <div className="cw-submission-inner">
-            <h1>Review and finish</h1>
-            <p>
-              {paperMode
-                ? "Review both responses before submitting the Writing test."
-                : "You are completing a single-task Writing practice."}
-            </p>
-            {writingItems.map((task) => {
-              const taskWords = countWords(responseFor(draft, task.id).text);
-              return (
-                <button
-                  key={task.id}
-                  className="cw-submission-row"
-                  onClick={() =>
-                    paperMode ? switchTask(task.id) : setSubmissionOpen(false)
-                  }
-                >
-                  <span>
-                    <strong>Part {task.data?.writingPart || part}</strong>
-                    <small>
-                      {taskWords
-                        ? `${taskWords} words entered`
-                        : "No response entered"}
-                    </small>
-                  </span>
-                  <span>
-                    {taskWords ? "Answered" : "Not answered"}{" "}
-                    <ChevronRight size={20} />
-                  </span>
-                </button>
-              );
-            })}
-            {paperMode && emptyTasks.length > 0 && (
-              <p className="cw-unanswered" role="status">
-                No response entered for{" "}
-                {emptyTasks
-                  .map((task) => `Task ${task.data?.writingPart}`)
-                  .join(" and ")}
-                .
-              </p>
-            )}
-            <p className="cw-subtle">
-              提交后，作文与本次用时会保存在练习记录中。
-              {draft.deadlineAt ? "计时仍在继续。" : ""}
-            </p>
-            <div className="cw-intro-actions">
-              <button
-                className="cw-secondary"
-                onClick={() => setSubmissionOpen(false)}
-              >
-                <ArrowLeft size={17} /> Return to question
-              </button>
-              <button
-                className="cw-primary"
-                disabled={conflict || pendingWrites > 0}
-                onClick={() => setConfirmFinish(true)}
-              >
-                {paperMode ? "Finish writing test" : "Finish practice"}{" "}
-                <Check size={20} />
-              </button>
-            </div>
-          </div>
-        </main>
       ) : (
         <>
-          <main className="cw-test-body">
-            <section className="cw-instructions">
-              <strong>Part {part}</strong>
-              <p>
-                You should spend about {recommended} minutes on this task. Write
-                at least {minimum} words.
-              </p>
-            </section>
-            <div className="cw-columns">
-              <section className="cw-prompt" aria-label="Writing task">
-                <h1>
-                  Writing Task {part} — {taskType}
-                </h1>
-                <RichText html={prompt} />
-              </section>
-              <section className="cw-answer">
-                <label htmlFor="computer-writing-answer">
-                  Write your answer below.
-                </label>
-                <textarea
-                  id="computer-writing-answer"
-                  ref={editorRef}
-                  aria-describedby="computer-writing-word-count"
-                  value={response.text}
-                  readOnly={
-                    conflict || draft.status !== "running" || clock.expired
-                  }
-                  onChange={(event) => edit("text", event.target.value)}
-                  spellCheck={false}
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  autoComplete="off"
-                  data-gramm="false"
-                  data-enable-grammarly="false"
-                />
-                <div className="cw-answer-footer">
-                  <span id="computer-writing-word-count">
-                    Word count: <strong>{words}</strong>
-                  </span>
-                  <span className="cw-subtle">
-                    {conflict
-                      ? "Saving stopped"
-                      : pendingWrites > 0
-                        ? "Saving…"
-                        : "Saved automatically"}
-                  </span>
-                </div>
-              </section>
-            </div>
-          </main>
-          <footer className="cw-navigation">
-            <div className="cw-task-tabs" aria-label="Writing tasks">
-              {writingItems.map((task) => {
-                const taskWords = countWords(responseFor(draft, task.id).text);
-                return (
+          {submissionOpen && (
+            <main className="cw-submission">
+              <div className="cw-submission-inner">
+                <h1>Review and finish</h1>
+                <p>
+                  {paperMode
+                    ? "Review both responses before submitting the Writing test."
+                    : "You are completing a single-task Writing practice."}
+                </p>
+                {writingItems.map((task) => {
+                  const taskWords = countWords(
+                    responseFor(draft, task.id).text,
+                  );
+                  return (
+                    <button
+                      key={task.id}
+                      className="cw-submission-row"
+                      onClick={() =>
+                        paperMode
+                          ? switchTask(task.id)
+                          : setSubmissionOpen(false)
+                      }
+                    >
+                      <span>
+                        <strong>Part {task.data?.writingPart || part}</strong>
+                        <small>
+                          {taskWords
+                            ? `${taskWords} words entered`
+                            : "No response entered"}
+                        </small>
+                      </span>
+                      <span>
+                        {taskWords ? "Answered" : "Not answered"}{" "}
+                        <ChevronRight size={20} />
+                      </span>
+                    </button>
+                  );
+                })}
+                {paperMode && emptyTasks.length > 0 && (
+                  <p className="cw-unanswered" role="status">
+                    No response entered for{" "}
+                    {emptyTasks
+                      .map((task) => `Task ${task.data?.writingPart}`)
+                      .join(" and ")}
+                    .
+                  </p>
+                )}
+                <p className="cw-subtle">
+                  提交后，作文与本次用时会保存在练习记录中。
+                  {draft.deadlineAt ? "计时仍在继续。" : ""}
+                </p>
+                <div className="cw-intro-actions">
                   <button
-                    key={task.id}
-                    className="cw-task-tab"
-                    aria-current={task.id === item.id ? "page" : undefined}
-                    disabled={conflict}
-                    onClick={() =>
-                      paperMode
-                        ? switchTask(task.id)
-                        : editorRef.current?.focus()
-                    }
+                    className="cw-secondary"
+                    onClick={() => setSubmissionOpen(false)}
                   >
-                    <strong>Part {task.data?.writingPart || part}</strong>
-                    <span>
-                      {taskWords ? `${taskWords} words` : "Not answered"}
-                    </span>
+                    <ArrowLeft size={17} /> Return to question
                   </button>
-                );
-              })}
-            </div>
-            <span className="cw-single-task">
-              {paperMode ? "Two-task Writing test" : "Single-task practice"}
-            </span>
-            <button
-              className="cw-finish-nav"
-              aria-label="Go to submission page"
-              title="Go to submission page"
-              onClick={() => setSubmissionOpen(true)}
-            >
-              <Check size={28} />
-            </button>
-          </footer>
+                  <button
+                    className="cw-primary"
+                    disabled={conflict || pendingWrites > 0}
+                    onClick={() => setConfirmFinish(true)}
+                  >
+                    {paperMode ? "Finish writing test" : "Finish practice"}{" "}
+                    <Check size={20} />
+                  </button>
+                </div>
+              </div>
+            </main>
+          )}
+          <div className="cw-running-workspace" hidden={submissionOpen}>
+            <main className="cw-test-body">
+              <section className="cw-instructions">
+                <strong>Part {part}</strong>
+                <p>
+                  You should spend about {recommended} minutes on this task.
+                  Write at least {minimum} words.
+                </p>
+              </section>
+              <div
+                className={`cw-columns${resizing ? " cw-resizing" : ""}`}
+                ref={panes}
+                style={{ "--cw-split": `${split}%` } as CSSProperties}
+              >
+                <section
+                  id="cw-prompt-panel"
+                  className="cw-prompt"
+                  aria-label="Writing task"
+                  ref={promptPane}
+                  onScroll={(event) => {
+                    promptScroll.current[item.id] =
+                      event.currentTarget.scrollTop;
+                  }}
+                >
+                  <h1>
+                    Writing Task {part} — {taskType}
+                  </h1>
+                  <ComputerWritingPrompt
+                    html={prompt}
+                    marks={draft.promptHighlights?.[item.id]}
+                    onSelection={(value) => {
+                      if (
+                        draftRef.current.status === "running" &&
+                        !checkDeadline()
+                      )
+                        setSelection(
+                          value ? { ...value, itemId: item.id } : null,
+                        );
+                    }}
+                  />
+                  <p className="cw-selection-hint">
+                    Select text to highlight it or add it to your notes.
+                  </p>
+                </section>
+                <div
+                  className="cw-divider"
+                  role="separator"
+                  tabIndex={0}
+                  aria-label="Resize writing panes"
+                  aria-orientation="vertical"
+                  aria-controls="cw-prompt-panel cw-answer-panel"
+                  aria-valuemin={30}
+                  aria-valuemax={70}
+                  aria-valuenow={Math.round(split)}
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    event.currentTarget.focus();
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                    setResizing(true);
+                    moveSplit(event.clientX);
+                  }}
+                  onPointerMove={(event) => {
+                    if (event.currentTarget.hasPointerCapture(event.pointerId))
+                      moveSplit(event.clientX);
+                  }}
+                  onPointerUp={(event) => {
+                    if (event.currentTarget.hasPointerCapture(event.pointerId))
+                      event.currentTarget.releasePointerCapture(
+                        event.pointerId,
+                      );
+                    setResizing(false);
+                  }}
+                  onLostPointerCapture={() => setResizing(false)}
+                  onKeyDown={(event) => {
+                    if (
+                      ["ArrowLeft", "ArrowRight", "Home", "End"].includes(
+                        event.key,
+                      )
+                    ) {
+                      event.preventDefault();
+                      setSplit((value) => resizeWritingSplit(value, event.key));
+                    }
+                  }}
+                >
+                  <GripVertical size={20} aria-hidden="true" />
+                </div>
+                <section
+                  className="cw-answer"
+                  id="cw-answer-panel"
+                  aria-label="Writing response"
+                >
+                  {writingItems.map((task) => {
+                    const answer = responseFor(draft, task.id);
+                    const active = task.id === item.id;
+                    return (
+                      <div
+                        className="cw-answer-task"
+                        key={task.id}
+                        hidden={!active}
+                      >
+                        <label htmlFor={`computer-writing-answer-${task.id}`}>
+                          Write your answer below.
+                        </label>
+                        <textarea
+                          id={`computer-writing-answer-${task.id}`}
+                          ref={(node) => {
+                            editors.current[task.id] = node;
+                            if (active) editorRef.current = node;
+                          }}
+                          aria-describedby={`computer-writing-word-count-${task.id}`}
+                          value={answer.text}
+                          readOnly={
+                            conflict ||
+                            draft.status !== "running" ||
+                            clock.expired
+                          }
+                          onChange={(event) =>
+                            edit("text", event.target.value, task.id)
+                          }
+                          spellCheck={false}
+                          autoCorrect="off"
+                          autoCapitalize="off"
+                          autoComplete="off"
+                          data-gramm="false"
+                          data-enable-grammarly="false"
+                        />
+                        <div className="cw-answer-footer">
+                          <span className="cw-subtle">
+                            {conflict
+                              ? "Saving stopped"
+                              : pendingWrites > 0
+                                ? "Saving…"
+                                : "Saved automatically"}
+                          </span>
+                          <span id={`computer-writing-word-count-${task.id}`}>
+                            Words: <strong>{countWords(answer.text)}</strong>
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </section>
+              </div>
+              <nav className="cw-page-navigation" aria-label="Task navigation">
+                <button
+                  className="cw-previous"
+                  aria-label="Previous writing task"
+                  title="Previous"
+                  disabled={taskIndex <= 0 || conflict}
+                  onClick={() => switchTask(writingItems[taskIndex - 1].id)}
+                >
+                  <ArrowLeft size={29} />
+                </button>
+                <button
+                  className="cw-next"
+                  aria-label={
+                    taskIndex < writingItems.length - 1
+                      ? "Next writing task"
+                      : "Go to submission page"
+                  }
+                  title="Next"
+                  disabled={conflict}
+                  onClick={() =>
+                    taskIndex < writingItems.length - 1
+                      ? switchTask(writingItems[taskIndex + 1].id)
+                      : setSubmissionOpen(true)
+                  }
+                >
+                  <ArrowRight size={29} />
+                </button>
+              </nav>
+            </main>
+            <footer className="cw-navigation">
+              <div className="cw-task-tabs" aria-label="Writing tasks">
+                {writingItems.map((task) => {
+                  const taskWords = countWords(
+                    responseFor(draft, task.id).text,
+                  );
+                  return (
+                    <button
+                      key={task.id}
+                      className="cw-task-tab"
+                      aria-current={task.id === item.id ? "page" : undefined}
+                      disabled={conflict}
+                      onClick={() =>
+                        paperMode
+                          ? switchTask(task.id)
+                          : editorRef.current?.focus()
+                      }
+                    >
+                      <strong>Part {task.data?.writingPart || part}</strong>
+                      <span>
+                        {taskWords ? `${taskWords} words` : "Not answered"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <span className="cw-single-task">
+                {paperMode ? "Two-task Writing test" : "Single-task practice"}
+              </span>
+              <button
+                className="cw-finish-nav"
+                aria-label="Go to submission page"
+                title="Go to submission page"
+                onClick={() => setSubmissionOpen(true)}
+              >
+                <Check size={28} />
+              </button>
+            </footer>
+          </div>
         </>
       )}
+
+      {selection &&
+        draft.status === "running" &&
+        !conflict &&
+        !submissionOpen &&
+        !options &&
+        !confirmFinish &&
+        !confirmExit && (
+          <div
+            className="cw-selection-actions"
+            role="toolbar"
+            aria-label="Selected prompt text"
+            style={{
+              left: Math.max(8, Math.min(selection.x, window.innerWidth - 360)),
+              top: Math.max(
+                80,
+                Math.min(selection.y, window.innerHeight - 120),
+              ),
+            }}
+          >
+            <button onClick={() => highlight("add")}>Highlight</button>
+            <button onClick={excerptToNotes}>Add to notes</button>
+            <button onClick={() => highlight("remove")}>Clear highlight</button>
+            <button aria-label="Close text tools" onClick={closeSelection}>
+              <X size={17} />
+            </button>
+          </div>
+        )}
 
       {notesOpen && draft.status === "running" && (
         <aside className="cw-notes" aria-label="Notes">
@@ -1081,6 +1340,7 @@ function ComputerWritingSession({
           </label>
           <textarea
             id="computer-writing-notes"
+            ref={notesRef}
             value={response.notes}
             readOnly={conflict || draft.status !== "running" || clock.expired}
             onChange={(event) => edit("notes", event.target.value)}

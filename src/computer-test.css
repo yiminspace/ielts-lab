@@ -243,11 +243,18 @@
   overflow: hidden;
   padding-top: 16px;
 }
+.computer-test .ct-question-column {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
 .computer-test .ct-questions {
   overflow: auto;
   min-width: 0;
   flex: 1;
-  padding: 0 17px 125px;
+  padding: 0 17px 24px;
   scroll-behavior: smooth;
 }
 .computer-test .ct-question-group {
@@ -495,12 +502,14 @@
   font-size: 15px;
 }
 .computer-test .ct-step-controls {
-  position: absolute;
-  right: 33px;
-  bottom: 112px;
   display: flex;
+  flex: 0 0 72px;
+  align-items: center;
+  justify-content: flex-end;
   gap: 3px;
-  z-index: 4;
+  height: 72px;
+  padding: 12px 17px;
+  background: var(--ct-bg);
 }
 .computer-test .ct-step-controls button {
   height: 48px;
@@ -904,8 +913,7 @@
     align-self: center;
   }
   .computer-test .ct-step-controls {
-    right: 22px;
-    bottom: 90px;
+    padding-right: 12px;
   }
   .computer-test .ct-step-controls button {
     width: 43px;
@@ -963,7 +971,7 @@
   .computer-test .ct-reading-passage {
     min-width: 240px;
   }
-  .computer-test .ct-reading .ct-questions {
+  .computer-test .ct-reading .ct-question-column {
     min-width: 240px;
   }
   .computer-test .ct-reading .ct-divider {
@@ -1082,52 +1090,81 @@
   color: var(--ct-muted);
 }
 
+/* Shared footer pattern observed in the official familiarisation screenshot. */
 .computer-test.ct-paper-mode .ct-footer {
-  min-height: 91px;
-  height: 91px;
+  min-height: 56px;
+  height: 56px;
 }
-.computer-test.ct-paper-mode .ct-part {
-  flex: 1;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: center;
-  gap: 13px;
-  padding: 5px 12px;
-  overflow: hidden;
-}
-.computer-test .ct-paper-parts {
+.computer-test .ct-paper-navigation {
   display: flex;
-  gap: 8px;
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 0;
+  align-items: stretch;
+  justify-content: space-between;
+  overflow-x: auto;
 }
-.computer-test .ct-paper-parts button {
-  display: inline-flex;
+.computer-test .ct-nav-part {
+  display: flex;
+  flex: 1 1 auto;
   align-items: center;
-  gap: 6px;
-  padding: 3px 11px;
-  min-height: 29px;
-  font-size: 14px;
-  border: 1px solid var(--ct-line);
-  border-radius: 0;
-  background: var(--ct-bg);
-  color: var(--ct-fg);
+  gap: 18px;
+  padding: 0 17px;
+  min-width: 130px;
 }
-.computer-test .ct-paper-parts .ct-current-part {
-  border-color: var(--ct-fg);
+.computer-test .ct-nav-part-expanded {
+  flex-grow: 2;
+  min-width: 280px;
+}
+.computer-test button.ct-part-heading {
+  flex-shrink: 0;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  white-space: nowrap;
+  gap: 14px;
+  font-size: 16px;
+}
+.computer-test .ct-part-heading strong {
+  font-weight: 400;
+}
+.computer-test .ct-nav-part-expanded .ct-part-heading strong {
   font-weight: 700;
 }
-.computer-test.ct-paper-mode .ct-question-numbers {
-  height: 35px;
-  flex-shrink: 0;
-  overflow-y: hidden;
-  padding-top: 5px;
+.computer-test .ct-part-heading span {
+  color: var(--ct-muted);
+  font-size: 14px;
 }
-.computer-test.ct-paper-mode .ct-step-controls {
-  bottom: 123px;
+.computer-test .ct-question-numbers[hidden] {
+  display: none;
 }
-.computer-test.ct-paper-mode .ct-answer-count {
-  align-self: center;
-  white-space: nowrap;
+.computer-test .ct-nav-part .ct-question-numbers {
+  overflow-x: auto;
+  min-width: 0;
+  padding: 0 2px;
+}
+.computer-test .ct-help {
+  text-align: left;
+  line-height: 1.6;
+}
+.computer-test .ct-help dt {
+  font-weight: 700;
+  margin-top: 20px;
+}
+.computer-test .ct-help dd {
+  margin: 4px 0 0;
+}
+.computer-test .ct-reading-passage:focus-visible,
+.computer-test .ct-questions:focus-visible {
+  outline: 2px solid var(--ct-focus);
+  outline-offset: -3px;
+}
+.computer-test .ct-divider {
+  touch-action: none;
+}
+.computer-test .ct-divider:focus-visible {
+  outline: 2px solid var(--ct-focus);
+  outline-offset: -2px;
 }
 .computer-test .ct-short-demo {
   display: inline-block;
@@ -1143,6 +1180,48 @@
 }
 @media (max-width: 900px) {
   .computer-test.ct-paper-mode .ct-notes {
-    bottom: 91px;
+    bottom: 56px;
+  }
+}
+
+@media (max-width: 900px) {
+  .computer-test .ct-nav-part {
+    min-width: 120px;
+    padding: 0 12px;
+    gap: 12px;
+  }
+  .computer-test .ct-nav-part-expanded {
+    min-width: 260px;
+  }
+}
+
+/* Keep the desktop frame aligned with the writing familiarisation view. */
+@media (min-width: 901px) {
+  .computer-test .ct-header {
+    height: 56px;
+    min-height: 56px;
+    padding: 4px 16px;
+  }
+  .computer-test .ct-test-taker > strong {
+    font-size: 16px;
+    line-height: 18px;
+  }
+  .computer-test .ct-track-label {
+    font-size: 10px;
+    line-height: 12px;
+  }
+  .computer-test .ct-test-taker > span {
+    min-height: 16px;
+    font-size: 13px;
+    line-height: 16px;
+  }
+  .computer-test .ct-instruction {
+    margin: 16px 16px 0;
+    padding: 10px 16px;
+  }
+  .computer-test .ct-footer,
+  .computer-test.ct-paper-mode .ct-footer {
+    height: 54px;
+    min-height: 54px;
   }
 }

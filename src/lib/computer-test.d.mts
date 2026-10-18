@@ -78,3 +78,10 @@ export function renumberGapPrefixes(
   originalRows: QuestionRow[],
   normalizedRows: QuestionRow[],
 ): string;
+
+export function navigationDestination(
+  numbers: number[],
+  current: number,
+  key: string,
+): number | null;
+export function splitByKeyboard(current: number, key: string): number | null;
