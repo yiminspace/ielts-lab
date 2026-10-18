@@ -326,6 +326,25 @@ export async function createApp({
       if (!read) return sendJSON(res, 405, { error: "此操作不被支持" });
       if (route === "/api/library")
         return sendJSON(res, 200, library.publicLibrary, req.method === "HEAD");
+      if (route === "/api/papers")
+        return sendJSON(
+          res,
+          200,
+          { papers: await library.getPapers() },
+          req.method === "HEAD",
+        );
+      if (route.startsWith("/api/papers/")) {
+        const id = route.slice("/api/papers/".length);
+        if (!/^[a-z0-9-]{1,100}$/.test(id))
+          return sendJSON(res, 400, { error: "试卷 ID 不正确" });
+        const paper = await library.getPaper(id);
+        return sendJSON(
+          res,
+          paper ? 200 : 404,
+          paper || { error: "试卷不存在" },
+          req.method === "HEAD",
+        );
+      }
       if (route === "/api/progress")
         return sendJSON(res, 200, await getProgress(), req.method === "HEAD");
       if (route.startsWith("/api/items/")) {
@@ -345,7 +364,7 @@ export async function createApp({
       if (route.startsWith("/media/")) {
         const relative = route.slice("/media/".length);
         if (
-          library.mode === "demo" &&
+          (relative === "demo-listening.wav" || library.mode === "demo") &&
           (/^demo-(?:listening|number|word-[0-3]|sentence-[0-2]|speaking-[0-2])\.wav$/.test(
             relative,
           ) ||

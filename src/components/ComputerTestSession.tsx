@@ -45,6 +45,12 @@ import {
   validSession,
   sessionSignature,
   prepareSessionSave,
+  paperParts,
+  answersForPart,
+  paperDraftKey,
+  paperReadingDeadline,
+  advancePaperAudio,
+  validatePaperParts,
   type QuestionNav,
 } from "../lib/computer-test.mjs";
 import "../computer-test.css";
@@ -75,6 +81,10 @@ type Session = {
   audioEnded: boolean;
   completedAt?: number;
   attemptId?: string;
+  attemptIds?: string[];
+  finishReason?: "submitted" | "timeout";
+  audioIndex?: number;
+  viewedPart?: number;
 };
 type Screen = "setup" | "active" | "submission" | "complete";
 type Modal = "options" | "contrast" | "text" | "exit" | null;
@@ -284,24 +294,58 @@ function newSession(): Session {
     audioEnded: false,
   };
 }
-export default function ComputerTestSession({
-  item,
-  onExit,
-}: {
-  item: StudyItem;
-  onExit: () => void;
-}) {
-  return <SessionView key={item.id} item={item} onExit={onExit} />;
+export interface PaperMode {
+  paperId: string;
+  runId: string;
+  startedAt: number;
+  items: StudyItem[];
+  shortDemo?: boolean;
+  autoStart?: boolean;
+  onComplete: (result: {
+    attemptIds: string[];
+    finishedAt: number;
+    reason: "submitted" | "timeout";
+  }) => void;
 }
-function SessionView({
-  item,
-  onExit,
-}: {
+type SessionProps = {
   item: StudyItem;
   onExit: () => void;
-}) {
+  paperMode?: PaperMode;
+};
+export default function ComputerTestSession(props: SessionProps) {
+  return (
+    <SessionView
+      key={
+        props.paperMode
+          ? `${props.paperMode.paperId}:${props.paperMode.runId}:${props.item.kind}`
+          : props.item.id
+      }
+      {...props}
+    />
+  );
+}
+function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
+  const paperItems = useMemo(
+    () => paperMode?.items || [initialItem],
+    [paperMode?.items, initialItem],
+  );
+  const normalizedParts = useMemo(
+    () => (paperMode ? paperParts(paperItems) : []),
+    [paperMode, paperItems],
+  );
+  const draftKey = paperMode
+    ? paperDraftKey(paperMode.paperId, paperMode.runId, initialItem.kind)
+    : examDraftKey(initialItem.id);
+  const [previous, setPrevious] = useState<Session | null>(() => {
+    const value = getProgress().drafts[draftKey];
+    return validSession(value) ? value : null;
+  });
+  const [viewedPart, setViewedPart] = useState(
+    Math.min(paperItems.length - 1, Math.max(0, previous?.viewedPart || 0)),
+  );
+  const item = paperItems[viewedPart] || initialItem;
   const data = item.data?.data?.questions ? item.data.data : item.data || {};
-  const listening = item.kind === "listening";
+  const listening = initialItem.kind === "listening";
   const trackLabel =
     item.testTrack === "general"
       ? "General Training"
@@ -310,18 +354,42 @@ function SessionView({
         : item.testTrack === "shared"
           ? "Academic & General Training"
           : "Track unclassified";
-  const groups = useMemo(() => buildGroups(data), [data]);
+  const singleGroups = useMemo(() => buildGroups(data), [data]);
+  const groups = useMemo(
+    () =>
+      paperMode ? normalizedParts.flatMap((part) => part.groups) : singleGroups,
+    [paperMode, normalizedParts, singleGroups],
+  );
+  const visibleGroups = paperMode
+    ? normalizedParts[viewedPart]?.groups || []
+    : groups;
   const rows = useMemo(() => groups.flatMap((group) => group.rows), [groups]);
   const navigation = useMemo(() => questionNavigation(groups), [groups]);
   const rowMap = useMemo(
     () => new Map(rows.map((row) => [row.id, row])),
     [rows],
   );
-  const draftKey = examDraftKey(item.id);
-  const [previous, setPrevious] = useState<Session | null>(() => {
-    const value = getProgress().drafts[draftKey];
-    return validSession(value) ? value : null;
-  });
+  const paperError = paperMode
+    ? (!Number.isFinite(paperMode.startedAt)
+        ? "This paper has no valid start time."
+        : "") ||
+      validatePaperParts(
+        paperItems,
+        normalizedParts,
+        initialItem.kind,
+        paperMode.shortDemo,
+      ) ||
+      (listening &&
+      paperItems.some(
+        (part) =>
+          !mediaUrl(
+            part,
+            (part.data?.data?.questions ? part.data.data : part.data)?.audioUrl,
+          ),
+      )
+        ? "One or more listening parts have no local audio file. This paper cannot start."
+        : "")
+    : "";
   const [session, setSession] = useState<Session>(previous || newSession());
   const [screen, setScreen] = useState<Screen>("setup");
   const [now, setNow] = useState(Date.now());
@@ -331,7 +399,11 @@ function SessionView({
       ? Math.max(1, Math.ceil(((Number(data.seconds) || 480) + 120) / 60))
       : 20,
   );
-  const [activeNumber, setActiveNumber] = useState(navigation[0]?.number || 1);
+  const [activeNumber, setActiveNumber] = useState(
+    paperMode
+      ? normalizedParts[viewedPart]?.first || 1
+      : navigation[0]?.number || 1,
+  );
   const [modal, setModal] = useState<Modal>(null);
   const [contrast, setContrast] = useState("black-white");
   const [textSize, setTextSize] = useState("regular");
@@ -359,10 +431,33 @@ function SessionView({
   sessionRef.current = session;
   screenRef.current = screen;
   const saveError = useSaveError();
-  const src = mediaUrl(item, data.audioUrl);
-  const part = Number(data.part) || 1;
-  const first = navigation[0]?.number || 1,
-    last = navigation.at(-1)?.number || first;
+  const audioIndex = paperMode ? session.audioIndex || 0 : 0;
+  const playingItem = paperMode
+    ? paperItems[audioIndex] || initialItem
+    : initialItem;
+  const playingData = playingItem.data?.data?.questions
+    ? playingItem.data.data
+    : playingItem.data || {};
+  const src = mediaUrl(playingItem, playingData.audioUrl);
+  const part = paperMode ? viewedPart + 1 : Number(data.part) || 1;
+  const first = paperMode
+      ? normalizedParts[viewedPart]?.first || 1
+      : navigation[0]?.number || 1,
+    last = paperMode
+      ? normalizedParts[viewedPart]?.last || first
+      : navigation.at(-1)?.number || first;
+  const firstOverall = navigation[0]?.number || 1,
+    lastOverall = navigation.at(-1)?.number || 1;
+  const audioToPlay = useRef(false),
+    pendingAudioPosition = useRef<number | null>(null);
+  const audioRequest = useRef(0),
+    audioCheckpointAt = useRef(0),
+    disposed = useRef(false);
+  const autoStarted = useRef(false),
+    completionNotified = useRef(false);
+  const scrollPositions = useRef<
+    Record<number, { passage: number; questions: number }>
+  >({});
   const remaining = remainingSeconds(session.deadline, now);
   const answered = navigation.filter((nav) =>
     answeredQuestion(nav, rowMap.get(nav.rowId)!, session.answers),
@@ -374,7 +469,9 @@ function SessionView({
 
   function update(patch: Partial<Session>) {
     if (conflictRef.current || sessionRef.current.phase === "complete") return;
-    setSession((current) => ({ ...current, ...patch }));
+    const next = { ...sessionRef.current, ...patch };
+    sessionRef.current = next;
+    setSession(next);
   }
   function snapshot() {
     return { ...sessionRef.current, audioPosition: audioPosition.current };
@@ -449,6 +546,55 @@ function SessionView({
     if (audio.current) audio.current.volume = volume;
   }, [volume]);
   useEffect(() => {
+    if (
+      !paperMode ||
+      paperMode.autoStart === false ||
+      autoStarted.current ||
+      paperError ||
+      submitted.current
+    )
+      return;
+    autoStarted.current = true;
+    if (previous?.phase === "complete") {
+      if (previous.attemptIds?.length === paperItems.length) {
+        submitted.current = true;
+        setScreen("complete");
+      } else void finish(previous.finishReason === "timeout");
+    } else start(!!previous);
+  }, [paperMode, paperError]);
+  useEffect(() => {
+    if (
+      !paperMode ||
+      session.phase !== "complete" ||
+      session.attemptIds?.length !== paperItems.length ||
+      completionNotified.current
+    )
+      return;
+    completionNotified.current = true;
+    paperMode.onComplete({
+      attemptIds: session.attemptIds,
+      finishedAt: session.completedAt || Date.now(),
+      reason: session.finishReason || "submitted",
+    });
+  }, [
+    paperMode,
+    session.phase,
+    session.attemptIds,
+    session.completedAt,
+    session.finishReason,
+  ]);
+  useEffect(() => {
+    if (
+      !paperMode ||
+      !audioToPlay.current ||
+      screenRef.current === "setup" ||
+      sessionRef.current.phase === "complete"
+    )
+      return;
+    audioToPlay.current = false;
+    playAudio(0);
+  }, [audioIndex, src]);
+  useEffect(() => {
     if (modal) {
       setSelection(null);
       requestAnimationFrame(() =>
@@ -482,12 +628,19 @@ function SessionView({
     return () => window.removeEventListener("keydown", handler);
   }, [modal]);
   useEffect(() => {
+    disposed.current = false;
     const element = root.current,
       player = audio.current;
     return () => {
-      player?.pause();
-      if (document.fullscreenElement === element)
-        document.exitFullscreen().catch(() => {});
+      disposed.current = true;
+      // StrictMode immediately remounts effects; stop only after a real unmount.
+      queueMicrotask(() => {
+        if (!disposed.current) return;
+        audioRequest.current++;
+        player?.pause();
+        if (document.fullscreenElement === element)
+          document.exitFullscreen().catch(() => {});
+      });
     };
   }, []);
 
@@ -503,7 +656,7 @@ function SessionView({
     }
   }
   function start(resume: boolean) {
-    if (conflictRef.current) return;
+    if (conflictRef.current || paperError || submitted.current) return;
     const stored = getProgress().drafts[draftKey];
     if (sessionSignature(stored) !== expectedSave.current) {
       conflict();
@@ -524,13 +677,21 @@ function SessionView({
     } else {
       next = {
         ...newSession(),
-        deadline: timed
-          ? Date.now() + Math.max(1, Math.min(180, minutes)) * 60000
-          : null,
+        startedAt: paperMode?.startedAt ?? Date.now(),
+        deadline: paperMode
+          ? listening
+            ? null
+            : paperReadingDeadline(paperMode.startedAt)
+          : timed
+            ? Date.now() + Math.max(1, Math.min(180, minutes)) * 60000
+            : null,
+        audioIndex: 0,
+        viewedPart: 0,
       };
     }
     submitted.current = false;
     audioPosition.current = next.audioPosition;
+    setViewedPart(next.viewedPart || 0);
     sessionRef.current = next;
     setSession(next);
     setNow(Date.now());
@@ -544,22 +705,63 @@ function SessionView({
       src &&
       !next.audioEnded &&
       (next.deadline === null || next.deadline > Date.now())
-    )
-      playAudio(next.audioPosition);
+    ) {
+      if (paperMode && resume) {
+        setAudioBlocked(true);
+        setAudioError(
+          `Part ${(next.audioIndex || 0) + 1} is paused at its saved position. Select Resume audio to continue.`,
+        );
+      } else playAudio(next.audioPosition);
+    }
   }
   function playAudio(position = audioPosition.current) {
     const player = audio.current;
-    if (!player) return;
-    player.currentTime = position;
+    if (
+      !player ||
+      conflictRef.current ||
+      sessionRef.current.phase === "complete" ||
+      sessionRef.current.audioEnded
+    )
+      return;
+    const playItem = paperMode
+      ? paperItems[sessionRef.current.audioIndex || 0]
+      : initialItem;
+    const playData = playItem?.data?.data?.questions
+      ? playItem.data.data
+      : playItem?.data || {};
+    const playSrc = playItem ? mediaUrl(playItem, playData.audioUrl) : "";
+    if (!playSrc) {
+      setAudioBlocked(true);
+      setAudioError(
+        "This audio part is unavailable. Restore the local file before resuming; no part has been skipped.",
+      );
+      return;
+    }
+    if (player.error || player.getAttribute("src") !== playSrc) {
+      player.setAttribute("src", playSrc);
+      player.load();
+    }
+    pendingAudioPosition.current = position;
+    if (player.readyState >= 1) {
+      player.currentTime = position;
+      pendingAudioPosition.current = null;
+    }
     player.playbackRate = 1;
     player.volume = volume;
+    const request = ++audioRequest.current;
     player
       .play()
       .then(() => {
+        if (disposed.current) {
+          player.pause();
+          return;
+        }
+        if (request !== audioRequest.current) return;
         setAudioBlocked(false);
         setAudioError("");
       })
       .catch(() => {
+        if (disposed.current || request !== audioRequest.current) return;
         setAudioBlocked(true);
         setAudioError(
           "Audio could not start. Select Resume audio to continue from the saved position.",
@@ -570,14 +772,21 @@ function SessionView({
     if (
       submitted.current ||
       conflictRef.current ||
-      sessionRef.current.phase === "complete"
+      (sessionRef.current.phase === "complete" &&
+        (!paperMode ||
+          sessionRef.current.attemptIds?.length === paperItems.length)) ||
+      (paperMode && listening && !sessionRef.current.audioEnded)
     )
       return;
     submitted.current = true;
     setSubmitting(true);
     audio.current?.pause();
     const current = snapshot(),
-      completedAt = Date.now();
+      completedAt =
+        current.completedAt ||
+        (automatic && current.deadline !== null
+          ? current.deadline
+          : Date.now());
     const result = gradeGroups(groups, current.answers);
     const work = pendingWrites.current
       .catch(() => false)
@@ -587,8 +796,59 @@ function SessionView({
             ...current,
             phase: "complete",
             completedAt,
+            finishReason: automatic ? "timeout" : "submitted",
           };
           if (!saveChecked(checkpoint)) return false;
+          if (paperMode) {
+            const attemptIds: string[] = [];
+            const totalDuration = elapsedSeconds(
+              current.startedAt,
+              completedAt,
+              current.deadline,
+            );
+            for (const [index, material] of paperItems.entries()) {
+              const partData = normalizedParts[index];
+              const partAnswers = answersForPart(partData, current.answers);
+              const partGrade = gradeGroups(
+                partData.originalGroups,
+                partAnswers,
+              );
+              const marker = JSON.stringify([
+                paperMode.paperId,
+                paperMode.runId,
+              ]);
+              const existing = getProgress().attempts.find(
+                (attempt) =>
+                  attempt.itemId === material.id &&
+                  attempt.answers?.__paperSession === marker,
+              );
+              if (existing) {
+                attemptIds.push(existing.id);
+                continue;
+              }
+              recordAttempt({
+                itemId: material.id,
+                title: material.title,
+                kind: material.kind,
+                answers: { ...partAnswers, __paperSession: marker },
+                score: partGrade.score,
+                total: partGrade.total,
+                durationSeconds: index === 0 ? totalDuration : 0,
+                detail: `${paperMode.shortDemo ? "Short original paper demonstration" : "Full-paper practice"} · Part ${index + 1}${automatic ? " · time limit reached" : ""}`,
+              });
+              const attempt = getProgress().attempts[0];
+              if (attempt?.itemId === material.id) attemptIds.push(attempt.id);
+            }
+            const next: Session = { ...checkpoint, attemptIds };
+            if (!saveChecked(next)) return false;
+            sessionRef.current = next;
+            setSession(next);
+            setPrevious(next);
+            setScreen("complete");
+            setModal(null);
+            setSelection(null);
+            return true;
+          }
           recordAttempt({
             itemId: item.id,
             title: item.title,
@@ -628,7 +888,7 @@ function SessionView({
     audio.current?.pause();
     onExit();
   }
-  function go(number: number | undefined) {
+  function go(number: number | undefined, restoreScroll = false) {
     if (
       number === undefined ||
       conflictRef.current ||
@@ -638,6 +898,21 @@ function SessionView({
       return;
     const target = navigation.find((nav) => nav.number === number);
     if (!target) return;
+    if (paperMode) {
+      const nextPart = normalizedParts.findIndex(
+        (part) => number >= part.first && number <= part.last,
+      );
+      if (nextPart >= 0 && nextPart !== viewedPart) {
+        scrollPositions.current[viewedPart] = {
+          passage:
+            panes.current?.querySelector(".ct-reading-passage")?.scrollTop || 0,
+          questions:
+            panes.current?.querySelector(".ct-questions")?.scrollTop || 0,
+        };
+        setViewedPart(nextPart);
+        update({ viewedPart: nextPart });
+      }
+    }
     setActiveNumber(number);
     setSelection(null);
     if (screen === "submission") {
@@ -645,6 +920,17 @@ function SessionView({
       update({ phase: "active" });
     }
     requestAnimationFrame(() => {
+      if (restoreScroll && paperMode) {
+        const targetPart = normalizedParts.findIndex(
+          (part) => number >= part.first && number <= part.last,
+        );
+        const saved = scrollPositions.current[targetPart];
+        const passage = panes.current?.querySelector(".ct-reading-passage"),
+          questions = panes.current?.querySelector(".ct-questions");
+        if (passage) passage.scrollTop = saved?.passage || 0;
+        if (questions) questions.scrollTop = saved?.questions || 0;
+        return;
+      }
       const element = document.getElementById(`ct-question-${target.rowId}`);
       element?.scrollIntoView({ block: "center" });
       const control = element?.matches("input,select")
@@ -747,12 +1033,13 @@ function SessionView({
     gap?: (index: number) => ReactNode,
     className = "",
   ) {
+    const keyedSurface = paperMode ? `${item.id}::${surface}` : surface;
     return (
       <Content
         html={html}
         item={item}
-        surface={surface}
-        marks={session.highlights[surface] || []}
+        surface={keyedSurface}
+        marks={session.highlights[keyedSurface] || []}
         gap={gap}
         onSelection={selectText}
         className={className}
@@ -1015,7 +1302,7 @@ function SessionView({
   return (
     <div
       ref={root}
-      className={`computer-test ct-contrast-${contrast} ct-size-${textSize}`}
+      className={`computer-test ct-contrast-${contrast} ct-size-${textSize} ${paperMode ? "ct-paper-mode" : ""}`}
     >
       <audio
         ref={audio}
@@ -1025,16 +1312,73 @@ function SessionView({
           setAudioPlaying(true);
           setAudioBlocked(false);
         }}
-        onPause={() => setAudioPlaying(false)}
+        onPause={() => {
+          setAudioPlaying(false);
+          if (
+            paperMode &&
+            !disposed.current &&
+            !submitted.current &&
+            !conflictRef.current &&
+            screenRef.current !== "setup" &&
+            !sessionRef.current.audioEnded &&
+            !audio.current?.ended &&
+            !audioToPlay.current
+          ) {
+            setAudioBlocked(true);
+            setAudioError(
+              "Audio was interrupted. Select Resume audio to continue from the saved position.",
+            );
+          }
+        }}
         onTimeUpdate={() => {
-          if (audio.current) audioPosition.current = audio.current.currentTime;
+          if (
+            audio.current &&
+            pendingAudioPosition.current === null &&
+            !audio.current.paused
+          ) {
+            audioPosition.current = audio.current.currentTime;
+            if (
+              paperMode &&
+              !submitted.current &&
+              Date.now() - audioCheckpointAt.current >= 1000
+            ) {
+              audioCheckpointAt.current = Date.now();
+              void persist(snapshot());
+            }
+          }
+        }}
+        onLoadedMetadata={() => {
+          if (audio.current && pendingAudioPosition.current !== null) {
+            audio.current.currentTime = pendingAudioPosition.current;
+            pendingAudioPosition.current = null;
+          }
         }}
         onEnded={() => {
           setAudioPlaying(false);
-          update({ audioEnded: true });
+          if (
+            conflictRef.current ||
+            sessionRef.current.phase === "complete" ||
+            screenRef.current === "setup"
+          )
+            return;
+          if (paperMode) {
+            const next = advancePaperAudio(
+              sessionRef.current,
+              audioIndex,
+              paperItems.length,
+              Date.now(),
+            );
+            if (!next) return;
+            audioPosition.current = 0;
+            audioToPlay.current = !next.audioEnded;
+            update(next);
+            void persist(snapshot());
+          } else update({ audioEnded: true });
         }}
         onError={() => {
           setAudioPlaying(false);
+          audioToPlay.current = false;
+          setAudioBlocked(true);
           if (screenRef.current !== "setup")
             setAudioError(
               "The local audio file could not be loaded. Check the archive and resume audio.",
@@ -1046,7 +1390,13 @@ function SessionView({
           <div className="ct-own-brand">IELTS Lab</div>
           <main>
             <p className="ct-setup-label">COMPUTER FAMILIARISATION</p>
-            <h1>Single-part practice</h1>
+            <h1>
+              {paperMode
+                ? paperMode.shortDemo
+                  ? "Short paper flow demonstration"
+                  : "Full-paper practice"
+                : "Single-part practice"}
+            </h1>
             <p className="ct-setup-title">{item.title}</p>
             <p className="ct-track-note">
               <strong>{trackLabel}</strong>
@@ -1056,58 +1406,85 @@ function SessionView({
                 </span>
               )}
             </p>
-            <p>
-              Practise the computer-test controls using your own local material.
-              This session contains one{" "}
-              {listening
-                ? "listening part"
-                : item.testTrack === "general"
-                  ? "reading practice section"
-                  : "reading passage"}
-              , not a complete IELTS test.
-            </p>
-            <fieldset className="ct-time-choice">
-              <legend>Practice time</legend>
-              <label>
-                <input
-                  type="radio"
-                  name="ct-time"
-                  checked={!timed}
-                  onChange={() => setTimed(false)}
-                />{" "}
-                Untimed familiarisation
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  name="ct-time"
-                  checked={timed}
-                  onChange={() => setTimed(true)}
-                />{" "}
-                Timed practice{" "}
-                <input
-                  aria-label="Practice time in minutes"
-                  type="number"
-                  min={1}
-                  max={180}
-                  value={minutes}
-                  onChange={(event) =>
-                    setMinutes(
-                      Math.max(
-                        1,
-                        Math.min(180, Number(event.target.value) || 1),
-                      ),
-                    )
-                  }
-                  disabled={!timed}
-                />{" "}
-                minutes
-              </label>
-              <small>
-                The time limit is your practice setting. The timer continues if
-                you leave this page.
-              </small>
-            </fieldset>
+            {paperMode ? (
+              <>
+                <p>
+                  {listening
+                    ? "Four listening parts play in order, followed by two minutes to check all answers. Changing the question part does not change the recording."
+                    : "Three reading parts share one 60-minute timer. The deadline continues when you switch parts or leave the page."}
+                </p>
+                {paperMode.shortDemo && (
+                  <p className="ct-paper-notice">
+                    Original short demonstration: this paper has{" "}
+                    {navigation.length} questions. It demonstrates the sequence
+                    and controls; it is not a full-length test.
+                  </p>
+                )}
+                {listening && (
+                  <p>
+                    Local recordings retain their own pauses and instructions.
+                    Their timing and recorded cues may differ from an official
+                    test; the final two-minute check is added by this app.
+                  </p>
+                )}
+                {paperError && <p className="ct-error">{paperError}</p>}
+              </>
+            ) : (
+              <>
+                <p>
+                  Practise the computer-test controls using your own local
+                  material. This session contains one{" "}
+                  {listening
+                    ? "listening part"
+                    : item.testTrack === "general"
+                      ? "reading practice section"
+                      : "reading passage"}
+                  , not a complete IELTS test.
+                </p>
+                <fieldset className="ct-time-choice">
+                  <legend>Practice time</legend>
+                  <label>
+                    <input
+                      type="radio"
+                      name="ct-time"
+                      checked={!timed}
+                      onChange={() => setTimed(false)}
+                    />{" "}
+                    Untimed familiarisation
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      name="ct-time"
+                      checked={timed}
+                      onChange={() => setTimed(true)}
+                    />{" "}
+                    Timed practice{" "}
+                    <input
+                      aria-label="Practice time in minutes"
+                      type="number"
+                      min={1}
+                      max={180}
+                      value={minutes}
+                      onChange={(event) =>
+                        setMinutes(
+                          Math.max(
+                            1,
+                            Math.min(180, Number(event.target.value) || 1),
+                          ),
+                        )
+                      }
+                      disabled={!timed}
+                    />{" "}
+                    minutes
+                  </label>
+                  <small>
+                    The time limit is your practice setting. The timer continues
+                    if you leave this page.
+                  </small>
+                </fieldset>
+              </>
+            )}
             {listening && (
               <p>
                 Audio plays once after you start. During the session you can
@@ -1156,14 +1533,23 @@ function SessionView({
               </button>
               <button
                 className="ct-primary"
-                disabled={!rows.length}
-                onClick={() => start(false)}
+                disabled={
+                  !rows.length ||
+                  !!paperError ||
+                  (!!paperMode && previous?.phase === "complete")
+                }
+                onClick={() => {
+                  if (!paperMode) submitted.current = false;
+                  start(!!paperMode && !!previous);
+                }}
               >
-                {previous
-                  ? "Start new practice"
-                  : listening
-                    ? "Play audio and start"
-                    : "Start practice"}
+                {paperMode && previous?.phase !== "complete" && previous
+                  ? "Resume practice"
+                  : previous
+                    ? "Start new practice"
+                    : listening
+                      ? "Play audio and start"
+                      : "Start practice"}
               </button>
             </div>
             {fullscreenError && <p role="status">{fullscreenError}</p>}
@@ -1179,7 +1565,10 @@ function SessionView({
             <div className="ct-own-brand">IELTS Lab</div>
             <div className="ct-test-taker">
               <strong>Test taker ID</strong>
-              <small className="ct-track-label">{trackLabel}</small>
+              <small className="ct-track-label">
+                {trackLabel}
+                {paperMode ? " · Paper practice" : ""}
+              </small>
               <span>
                 {listening ? (
                   <>
@@ -1187,7 +1576,9 @@ function SessionView({
                     {session.audioEnded
                       ? "Audio has finished"
                       : audioPlaying
-                        ? "Audio is Playing"
+                        ? paperMode
+                          ? `Audio is Playing · Part ${audioIndex + 1}`
+                          : "Audio is Playing"
                         : screen === "complete"
                           ? "Practice completed"
                           : "Audio is not playing"}
@@ -1244,8 +1635,7 @@ function SessionView({
           </header>
           {(audioError || saveError) && (
             <div className="ct-live-message" role="status">
-              {audioError ||
-                "Your latest work is held in this browser. The local save service is temporarily unavailable."}
+              {audioError || saveError}
               {audioBlocked && screen !== "complete" && (
                 <button onClick={() => playAudio()}>Resume audio</button>
               )}
@@ -1265,6 +1655,19 @@ function SessionView({
                           : "Read the passage"}{" "}
                       and answer questions {first}–{last}.
                     </p>
+                    {paperMode && listening && (
+                      <span className="ct-short-demo">
+                        Local recording timings · two-minute final answer check
+                      </span>
+                    )}
+                    {paperMode?.shortDemo && (
+                      <span className="ct-short-demo">
+                        Short original demo · {navigation.length} questions
+                      </span>
+                    )}
+                    {paperMode && listening && session.audioEnded && (
+                      <span className="ct-short-demo">Final answer check</span>
+                    )}
                   </div>
                   <div
                     className={`ct-panes ${listening ? "ct-listening" : "ct-reading"}`}
@@ -1313,7 +1716,7 @@ function SessionView({
                       </>
                     )}
                     <div className="ct-questions">
-                      {groups.map(groupView)}
+                      {visibleGroups.map(groupView)}
                       <div className="ct-review-marker">
                         <label>
                           <input
@@ -1330,7 +1733,7 @@ function SessionView({
                 {notesOpen && (
                   <aside className="ct-notes">
                     <div>
-                      <strong>Notes</strong>
+                      <strong>Notes{paperMode ? " · all parts" : ""}</strong>
                       <button
                         aria-label="Hide notes"
                         onClick={() => setNotesOpen(false)}
@@ -1352,7 +1755,7 @@ function SessionView({
               <div className="ct-step-controls">
                 <button
                   aria-label="Previous question"
-                  disabled={activeNumber === first}
+                  disabled={activeNumber === firstOverall}
                   onClick={() => {
                     const index = navigation.findIndex(
                       (nav) => nav.number === activeNumber,
@@ -1364,7 +1767,7 @@ function SessionView({
                 </button>
                 <button
                   aria-label="Next question"
-                  disabled={activeNumber === last}
+                  disabled={activeNumber === lastOverall}
                   onClick={() => {
                     const index = navigation.findIndex(
                       (nav) => nav.number === activeNumber,
@@ -1386,7 +1789,7 @@ function SessionView({
                 Check your answers before you submit. You can return to any
                 question below.
               </p>
-              <h2>Part {part}</h2>
+              <h2>{paperMode ? "All parts" : `Part ${part}`}</h2>
               <div className="ct-review-grid">
                 {navigation.map((nav) => (
                   <button
@@ -1408,6 +1811,14 @@ function SessionView({
                   </button>
                 ))}
               </div>
+              {paperMode && listening && !session.audioEnded && (
+                <p className="ct-paper-notice">
+                  You can review answers while the recording continues.
+                  Submission becomes available after all four recordings finish.
+                  Audio problems must be resolved before completing this
+                  section.
+                </p>
+              )}
               <div className="ct-submission-actions">
                 <button
                   onClick={() => {
@@ -1420,7 +1831,10 @@ function SessionView({
                 <button
                   className="ct-primary"
                   onClick={() => void finish(false)}
-                  disabled={submitting}
+                  disabled={
+                    submitting ||
+                    (!!paperMode && listening && !session.audioEnded)
+                  }
                 >
                   {submitting ? "Saving answers…" : "Submit answers"}
                 </button>
@@ -1450,7 +1864,10 @@ function SessionView({
                   included in your earned score.
                 </p>
               )}
-              <p>This single-part practice score is not an IELTS band score.</p>
+              <p>
+                This {paperMode ? "paper practice" : "single-part practice"}{" "}
+                score is not an IELTS band score.
+              </p>
               <div className="ct-submission-actions">
                 <button onClick={exit}>Back to library</button>
                 {session.attemptId && (
@@ -1461,23 +1878,47 @@ function SessionView({
                     Review answers and explanations
                   </a>
                 )}
-                <button
-                  onClick={() => {
-                    const stored = getProgress().drafts[draftKey];
-                    setPrevious(validSession(stored) ? stored : null);
-                    setScreen("setup");
-                    setAudioError("");
-                  }}
-                >
-                  Practise again
-                </button>
+                {!paperMode && (
+                  <button
+                    onClick={() => {
+                      const stored = getProgress().drafts[draftKey];
+                      setPrevious(validSession(stored) ? stored : null);
+                      setScreen("setup");
+                      setAudioError("");
+                    }}
+                  >
+                    Practise again
+                  </button>
+                )}
               </div>
             </main>
           )}
           {screen !== "complete" && (
-            <footer className="ct-footer">
+            <footer
+              className={`ct-footer ${paperMode ? "ct-paper-footer" : ""}`}
+            >
               <div className="ct-part">
-                <strong>Part {part}</strong>
+                {paperMode ? (
+                  <div className="ct-paper-parts" aria-label="Paper parts">
+                    {normalizedParts.map((part, index) => (
+                      <button
+                        key={part.itemId}
+                        className={
+                          viewedPart === index ? "ct-current-part" : ""
+                        }
+                        onClick={() => go(part.first, true)}
+                        aria-label={`Part ${index + 1}, questions ${part.first} to ${part.last}`}
+                      >
+                        Part {index + 1}
+                        {listening &&
+                          audioIndex === index &&
+                          !session.audioEnded && <Volume2 size={13} />}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <strong>Part {part}</strong>
+                )}
                 <div className="ct-question-numbers">
                   {navigation.map((nav) => (
                     <button

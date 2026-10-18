@@ -301,11 +301,26 @@
   gap: 30px;
 }
 .computer-writing .cw-task-tab {
-  border-top: 4px solid var(--cw-color);
+  border-top: 4px solid transparent;
   padding: 13px 20px 13px 5px;
   justify-content: flex-start;
   gap: 20px;
   min-width: 190px;
+}
+.computer-writing .cw-task-tab[aria-current="page"] {
+  border-top-color: var(--cw-color);
+  background: var(--cw-panel);
+}
+.cw-task-tabs {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  overflow-x: auto;
+}
+.cw-unanswered {
+  border-left: 3px solid var(--cw-color);
+  padding: 10px 14px;
+  background: var(--cw-panel);
 }
 .cw-task-tab strong {
   font-size: 18px;

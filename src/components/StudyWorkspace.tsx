@@ -21,6 +21,7 @@ import {
   formatTime,
   typingMetrics,
   reviewIndex,
+  writingReview,
 } from "../lib/study.mjs";
 import "../study.css";
 
@@ -231,7 +232,87 @@ function Voices({ item, row }: { item: StudyItem; row: Row }) {
   );
 }
 
-function Writing({ item }: { item: StudyItem }) {
+function Writing({
+  item,
+  reviewAttempt,
+}: {
+  item: StudyItem;
+  reviewAttempt?: Attempt;
+}) {
+  const review = writingReview(item.id, reviewAttempt);
+  if (review && reviewAttempt) {
+    const part = Number(item.data?.writingPart) === 1 ? 1 : 2;
+    const recordedDate = new Date(reviewAttempt.createdAt);
+    const recordedAt = Number.isFinite(recordedDate.getTime())
+      ? recordedDate.toLocaleString("zh-CN")
+      : "";
+    const timingLabel = review.sharedTiming ? "整卷写作共用时间" : "本次用时";
+    const duration =
+      review.durationSeconds === null
+        ? "未记录"
+        : formatTime(review.durationSeconds);
+    return (
+      <div className="study-writing">
+        <section className="study-panel study-writing-prompt">
+          <div className="study-eyebrow">WRITING TASK {part} · 历史复习</div>
+          <h2>{item.title}</h2>
+          <RichText
+            html={
+              item.data?.writingQuestion ||
+              item.data?.writingQuestionText ||
+              item.data?.prompt ||
+              ""
+            }
+          />
+        </section>
+        <section className="study-panel study-composer">
+          <p className="study-review-notice">
+            历史作答 · 只读{recordedAt ? ` · ${recordedAt}` : ""}
+          </p>
+          <div className="study-toolbar">
+            <div>
+              <strong>{review.words}</strong> 词
+            </div>
+            <span className="study-clock">
+              {timingLabel} {duration}
+            </span>
+          </div>
+          <label className="study-sr-only" htmlFor="writing-history-answer">
+            该次提交的作文
+          </label>
+          <textarea
+            id="writing-history-answer"
+            className="study-essay"
+            readOnly
+            value={review.text}
+            placeholder="该次未填写作文"
+            spellCheck={false}
+          />
+          <h3>该次笔记</h3>
+          <p className="study-history-notes">
+            {review.notes || "该次没有保存笔记。"}
+          </p>
+          <div className="study-toolbar study-toolbar-bottom">
+            <span className="study-muted">未进行自动评分</span>
+            <button
+              onClick={() =>
+                downloadText(
+                  `${item.title}-${reviewAttempt.id}.txt`,
+                  `${item.title}\n${recordedAt}\n${timingLabel} ${duration} · ${review.words} 词\n\n作文\n${review.text}\n\n笔记\n${review.notes}`,
+                )
+              }
+            >
+              <Download size={16} /> 导出本次作答
+            </button>
+          </div>
+        </section>
+      </div>
+    );
+  }
+  return <WritingPractice item={item} />;
+}
+
+function WritingPractice({ item }: { item: StudyItem }) {
   const draft = getProgress().drafts[item.id] || {};
   const [value, setValue] = useState(String(draft.text || ""));
   const [saved, setSaved] = useState(false);
@@ -1372,7 +1453,7 @@ function Workspace({
 }) {
   switch (item.kind) {
     case "writing":
-      return <Writing item={item} />;
+      return <Writing item={item} reviewAttempt={reviewAttempt} />;
     case "speaking":
       return <Speaking item={item} />;
     case "vocabulary":

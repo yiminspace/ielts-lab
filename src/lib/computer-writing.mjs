@@ -45,7 +45,7 @@ export function writingCanRecord(expected, currentDraft, runId) {
   return (
     !!runId &&
     writingRevisionMatches(expected, currentDraft) &&
-    currentDraft?.mode === "single-task-writing" &&
+    ["single-task-writing", "paper-writing"].includes(currentDraft?.mode) &&
     currentDraft.status === "finished" &&
     currentDraft.runId === runId
   );

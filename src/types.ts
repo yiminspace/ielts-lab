@@ -49,3 +49,24 @@ export interface Progress {
   notes: Record<string, string>;
   updatedAt?: string;
 }
+
+export interface ExamPaper {
+  id: string;
+  title: string;
+  collection: string;
+  testTrack: "general";
+  source: "archive" | "original";
+  listeningIds: string[];
+  readingIds: string[];
+  writingIds: string[];
+  ready: boolean;
+  issues: string[];
+  shortDemo?: boolean;
+  listeningMarks?: number;
+  readingMarks?: number;
+}
+export interface ExamPaperDetail extends ExamPaper {
+  listening: StudyItem[];
+  reading: StudyItem[];
+  writing: StudyItem[];
+}

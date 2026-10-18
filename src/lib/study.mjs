@@ -47,6 +47,33 @@ export function formatTime(seconds = 0) {
   return `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`;
 }
 
+/** A blank submitted response is still a valid history entry, never a draft fallback. */
+export function writingReview(itemId, attempt) {
+  if (!attempt || attempt.kind !== "writing" || attempt.itemId !== itemId)
+    return null;
+  const answers = attempt.answers || {};
+  const text =
+    typeof answers.essay === "string"
+      ? answers.essay
+      : typeof answers.text === "string"
+        ? answers.text
+        : null;
+  if (text === null) return null;
+  return {
+    text,
+    notes: typeof answers.notes === "string" ? answers.notes : "",
+    words: countWords(text),
+    durationSeconds:
+      typeof attempt.durationSeconds === "number" &&
+      Number.isFinite(attempt.durationSeconds) &&
+      attempt.durationSeconds >= 0
+        ? attempt.durationSeconds
+        : null,
+    sharedTiming:
+      typeof answers.paperRunId === "string" && !!answers.paperRunId,
+  };
+}
+
 /** Resolve an earlier attempt to the original row, including legacy index-only entries. */
 export function reviewIndex(rows, attempt, kind, fallback = 0) {
   const safeFallback = Math.max(
