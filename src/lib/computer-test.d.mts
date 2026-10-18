@@ -5,6 +5,10 @@ export interface QuestionNav {
   groupId: string;
   offset: number;
 }
+export interface QuestionNavEntry extends QuestionNav {
+  endNumber: number;
+  label: string;
+}
 export function remainingSeconds(
   deadline: number | null | undefined,
   now?: number,
@@ -15,6 +19,27 @@ export function elapsedSeconds(
   deadline?: number | null,
 ): number;
 export function questionNavigation(groups: QuestionGroup[]): QuestionNav[];
+export function questionNavigationEntries(
+  groups: QuestionGroup[],
+): QuestionNavEntry[];
+export function navigationEntryProgress(
+  entry: QuestionNavEntry,
+  row: QuestionRow,
+  answers: Record<string, string | string[]>,
+): { answered: number; total: number; complete: boolean };
+export function navigationEntryMarked(
+  entry: QuestionNavEntry,
+  marked: number[],
+): boolean;
+export function toggleNavigationEntryMark(
+  entry: QuestionNavEntry,
+  marked: number[],
+): number[];
+export function matchingMatrix(group: QuestionGroup): {
+  kind: "information" | "features";
+  options: Choice[];
+  rows: { rowId: string; html: string; beforeHtml: string }[];
+} | null;
 export function answeredQuestion(
   nav: QuestionNav,
   row: QuestionRow,
@@ -84,4 +109,8 @@ export function navigationDestination(
   current: number,
   key: string,
 ): number | null;
+export function scrollQuestionWithinPane(
+  pane: HTMLElement | null | undefined,
+  target: HTMLElement | null | undefined,
+): boolean;
 export function splitByKeyboard(current: number, key: string): number | null;

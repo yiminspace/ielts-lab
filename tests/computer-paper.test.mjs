@@ -5,6 +5,10 @@ import {
   answersForPart,
   paperDraftKey,
   questionNavigation,
+  questionNavigationEntries,
+  navigationEntryProgress,
+  navigationEntryMarked,
+  validSession,
   paperReadingDeadline,
   remainingSeconds,
   advancePaperAudio,
@@ -92,6 +96,33 @@ test("global numbering preserves multiple-choice answer slots and original per-p
   const row = parts[1].groups[0].rows[0];
   assert.deepEqual([row.number, row.endNumber], [11, 12]);
   const answers = { [row.id]: ["2", "0"] };
+  const allGroups = parts.flatMap((part) => part.groups);
+  const entries = questionNavigationEntries(allGroups);
+  const entry = entries.at(-1);
+  assert.equal(entries.length, 11);
+  assert.equal(questionNavigation(allGroups).length, 12);
+  assert.equal(entry.label, "11–12");
+  assert.equal(entry.rowId, row.id);
+  assert.deepEqual(navigationEntryProgress(entry, row, answers), {
+    answered: 2,
+    total: 2,
+    complete: true,
+  });
+  // Existing drafts already store one array under the row key, including a mark on the second slot.
+  const restored = JSON.parse(
+    JSON.stringify({
+      version: 1,
+      phase: "active",
+      startedAt: 1,
+      answers,
+      marked: [12],
+    }),
+  );
+  assert.equal(validSession(restored), true);
+  assert.equal(navigationEntryMarked(entry, restored.marked), true);
+  assert.deepEqual(answersForPart(parts[1], restored.answers), {
+    "0:0": ["2", "0"],
+  });
   assert.deepEqual(answersForPart(parts[1], answers), { "0:0": ["2", "0"] });
   assert.equal(
     gradeGroups(parts[1].originalGroups, answersForPart(parts[1], answers))

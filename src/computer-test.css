@@ -18,6 +18,7 @@
     Helvetica,
     sans-serif;
   overflow: hidden;
+  overflow: clip;
   letter-spacing: normal;
   text-align: left;
 }
@@ -255,7 +256,7 @@
   min-width: 0;
   flex: 1;
   padding: 0 17px 24px;
-  scroll-behavior: smooth;
+  overscroll-behavior: contain;
 }
 .computer-test .ct-question-group {
   margin: 0 0 33px;
@@ -318,10 +319,11 @@
   margin: 0 4px;
 }
 .computer-test input.ct-gap {
-  width: 111px;
-  height: 26px;
-  padding: 2px 7px;
-  line-height: 1.1;
+  width: 9em;
+  height: 1.375em;
+  min-height: 22px;
+  padding: 1px 7px;
+  line-height: 1;
   font-size: 1em;
   background: var(--ct-bg);
   border: 1px solid #737373;
@@ -383,6 +385,109 @@
 .computer-test .ct-draggable-option > .ct-rich {
   line-height: 1.5;
 }
+.computer-test .ct-match-matrix-frame {
+  border: 1px solid var(--ct-line);
+  padding: 16px;
+  margin: 16px 0;
+  overflow-x: auto;
+}
+.computer-test .ct-match-matrix {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 1em;
+}
+.computer-test .ct-match-matrix th,
+.computer-test .ct-match-matrix td {
+  border: 0;
+  border-bottom: 1px solid var(--ct-fg);
+  padding: 9px 0;
+  background: transparent;
+}
+.computer-test .ct-match-matrix thead th {
+  height: 44px;
+  font-weight: 700;
+  text-align: center;
+}
+.computer-test .ct-match-matrix th:not(:first-child),
+.computer-test .ct-match-matrix td {
+  width: 42px;
+  border-left: 1px solid var(--ct-fg);
+  text-align: center;
+  vertical-align: top;
+}
+.computer-test .ct-match-matrix tbody th {
+  font-weight: 400;
+  text-align: left;
+}
+.computer-test .ct-match-matrix tbody tr:last-child > * {
+  border-bottom: 0;
+}
+.computer-test .ct-matrix-statement {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding-right: 10px;
+  min-height: 36px;
+}
+.computer-test .ct-matrix-number {
+  display: inline-block;
+  flex-shrink: 0;
+  min-width: 28px;
+  padding: 2px;
+  text-align: center;
+  border: 2px solid transparent;
+  border-radius: 2px;
+  line-height: 1.5;
+}
+.computer-test .ct-matrix-number.ct-active {
+  border-color: var(--ct-focus);
+}
+.computer-test .ct-match-matrix label {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 36px;
+  padding-top: 3px;
+  cursor: pointer;
+}
+.computer-test .ct-match-matrix input {
+  margin: 0;
+}
+.computer-test .ct-match-matrix .ct-rich {
+  min-width: 0;
+  line-height: 1.5;
+}
+.computer-test .ct-match-legend {
+  display: table;
+  max-width: 100%;
+  border: 1px solid var(--ct-fg);
+  margin: 16px 0;
+}
+.computer-test .ct-match-legend > strong,
+.computer-test .ct-match-legend > .ct-rich {
+  display: block;
+  padding: 16px 8px;
+}
+.computer-test .ct-match-legend table {
+  border-collapse: collapse;
+}
+.computer-test .ct-match-legend th,
+.computer-test .ct-match-legend td {
+  padding: 7px 8px;
+  border-top: 1px solid var(--ct-fg);
+  font-weight: 400;
+  vertical-align: top;
+}
+.computer-test .ct-match-legend th {
+  border-right: 1px solid var(--ct-fg);
+}
+.computer-test .ct-match-legend .ct-rich > :first-child {
+  margin-top: 0;
+}
+.computer-test .ct-match-legend .ct-rich > :last-child {
+  margin-bottom: 0;
+}
 .computer-test .ct-choice-question {
   border: 0;
   padding: 0;
@@ -390,16 +495,41 @@
   min-width: 0;
   scroll-margin-top: 12px;
 }
-.computer-test .ct-choice-question legend {
+.computer-test .ct-choice-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
   width: 100%;
   padding: 0;
   margin: 0 0 12px;
   font-size: 1em;
   line-height: 1.7;
 }
-.computer-test .ct-choice-question legend > strong {
+.computer-test .ct-choice-heading > strong {
   display: inline-block;
   margin-right: 7px;
+  flex-shrink: 0;
+}
+.computer-test .ct-choice-heading > .ct-rich {
+  flex: 1;
+  min-width: 0;
+}
+.computer-test .ct-choice-heading > .ct-rich > :first-child {
+  margin-top: 0;
+}
+.computer-test .ct-choice-heading > .ct-rich > :last-child {
+  margin-bottom: 0;
+}
+.computer-test .ct-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 .computer-test .ct-choice-question > label {
   display: flex;

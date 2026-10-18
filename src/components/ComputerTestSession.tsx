@@ -42,6 +42,11 @@ import {
   examDraftKey,
   optionFromDrop,
   questionNavigation,
+  questionNavigationEntries,
+  navigationEntryProgress,
+  navigationEntryMarked,
+  toggleNavigationEntryMark,
+  matchingMatrix,
   remainingSeconds,
   validSession,
   sessionSignature,
@@ -53,8 +58,9 @@ import {
   advancePaperAudio,
   validatePaperParts,
   navigationDestination,
+  scrollQuestionWithinPane,
   splitByKeyboard,
-  type QuestionNav,
+  type QuestionNavEntry,
 } from "../lib/computer-test.mjs";
 import "../computer-test.css";
 
@@ -133,6 +139,7 @@ function Content({
   surface,
   onSelection,
   className = "",
+  textOffset = 0,
 }: {
   html: unknown;
   item: StudyItem;
@@ -141,6 +148,7 @@ function Content({
   surface: string;
   onSelection?: (selection: Selection | null) => void;
   className?: string;
+  textOffset?: number;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const body = useMemo(() => {
@@ -148,7 +156,7 @@ function Content({
     el.innerHTML = safeHTML(html);
     return el;
   }, [html]);
-  let offset = 0,
+  let offset = textOffset,
     gapIndex = 0,
     keyIndex = 0;
   function renderText(value: string, key: number): ReactNode {
@@ -258,8 +266,8 @@ function Content({
           const bounds = range.getBoundingClientRect();
           onSelection({
             surface,
-            start: start.length,
-            end: start.length + text.length,
+            start: textOffset + start.length,
+            end: textOffset + start.length + text.length,
             text,
             keyboard,
             returnFocus:
@@ -422,6 +430,10 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
     : groups;
   const rows = useMemo(() => groups.flatMap((group) => group.rows), [groups]);
   const navigation = useMemo(() => questionNavigation(groups), [groups]);
+  const navigationEntries = useMemo(
+    () => questionNavigationEntries(groups),
+    [groups],
+  );
   const rowMap = useMemo(
     () => new Map(rows.map((row) => [row.id, row])),
     [rows],
@@ -510,8 +522,12 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
     last = paperMode
       ? normalizedParts[viewedPart]?.last || first
       : navigation.at(-1)?.number || first;
-  const firstOverall = navigation[0]?.number || 1,
-    lastOverall = navigation.at(-1)?.number || 1;
+  const activeEntry = navigationEntries.find(
+    (entry) => activeNumber >= entry.number && activeNumber <= entry.endNumber,
+  );
+  const activeEntryIndex = navigationEntries.findIndex(
+    (entry) => entry === activeEntry,
+  );
   const audioToPlay = useRef(false),
     pendingAudioPosition = useRef<number | null>(null);
   const audioRequest = useRef(0),
@@ -1003,7 +1019,9 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
       submitting
     )
       return;
-    const target = navigation.find((nav) => nav.number === number);
+    const target = navigationEntries.find(
+      (nav) => number >= nav.number && number <= nav.endNumber,
+    );
     if (!target) return;
     if (paperMode) {
       const nextPart = normalizedParts.findIndex(
@@ -1020,13 +1038,14 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
         update({ viewedPart: nextPart });
       }
     }
-    setActiveNumber(number);
+    setActiveNumber(target.number);
     setSelection(null);
     if (screen === "submission") {
       setScreen("active");
       update({ phase: "active" });
     }
     requestAnimationFrame(() => {
+      if (root.current) root.current.scrollTop = 0;
       if (restoreScroll && paperMode) {
         const targetPart = normalizedParts.findIndex(
           (part) => number >= part.first && number <= part.last,
@@ -1039,7 +1058,10 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
         return;
       }
       const element = document.getElementById(`ct-question-${target.rowId}`);
-      element?.scrollIntoView({ block: "center" });
+      scrollQuestionWithinPane(
+        panes.current?.querySelector<HTMLElement>(".ct-questions"),
+        element,
+      );
       const control = element?.matches("input,select")
         ? element
         : element?.querySelector<HTMLElement>(
@@ -1051,7 +1073,7 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
   }
   function navigateWithKeyboard(
     event: ReactKeyboardEvent<HTMLButtonElement>,
-    navs: QuestionNav[],
+    navs: QuestionNavEntry[],
     number: number,
   ) {
     if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
@@ -1088,20 +1110,21 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
         ?.focus({ preventScroll: true }),
     );
   }
-  function questionButtons(navs: QuestionNav[]) {
+  function questionButtons(navs: QuestionNavEntry[]) {
     return navs.map((nav) => {
-      const done = answeredQuestion(
+      const progress = navigationEntryProgress(
         nav,
         rowMap.get(nav.rowId)!,
         session.answers,
       );
-      const marked = session.marked.includes(nav.number);
+      const marked = navigationEntryMarked(nav, session.marked);
+      const status = progress.complete ? "Attempted" : "Not attempted";
       return (
         <button
           key={nav.number}
           id={`ct-nav-${nav.number}`}
-          className={`${activeNumber === nav.number && screen === "active" ? "ct-active" : ""} ${done ? "ct-is-answered" : ""} ${marked ? "ct-marked" : ""}`}
-          aria-label={`Question ${nav.number}, ${done ? "answered" : "not answered"}${marked ? ", marked for review" : ""}`}
+          className={`${activeNumber === nav.number && screen === "active" ? "ct-active" : ""} ${progress.complete ? "ct-is-answered" : ""} ${marked ? "ct-marked" : ""}`}
+          aria-label={`Question ${nav.label}, ${status}${marked ? ", marked for review" : ""}`}
           aria-current={
             activeNumber === nav.number && screen === "active"
               ? "step"
@@ -1118,16 +1141,14 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
           onClick={() => go(nav.number)}
         >
           <span className="ct-question-progress" />
-          {nav.number}
+          {nav.label}
           {marked && <i aria-hidden="true" />}
         </button>
       );
     });
   }
   function focusRow(row: QuestionRow) {
-    setActiveNumber((current) =>
-      current >= row.number && current <= row.endNumber ? current : row.number,
-    );
+    setActiveNumber(row.number);
   }
   function answer(row: QuestionRow, value: string | string[]) {
     if (
@@ -1152,11 +1173,13 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
   }
   function markQuestion(number: number) {
     if (screen !== "active" || conflictRef.current || submitting) return;
+    const entry = navigationEntries.find(
+      (nav) => number >= nav.number && number <= nav.endNumber,
+    );
+    if (!entry) return;
     setSession((current) => ({
       ...current,
-      marked: current.marked.includes(number)
-        ? current.marked.filter((value) => value !== number)
-        : [...current.marked, number],
+      marked: toggleNavigationEntryMark(entry, current.marked),
     }));
   }
   function selectText(value: Selection | null) {
@@ -1224,6 +1247,7 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
     surface: string,
     gap?: (index: number) => ReactNode,
     className = "",
+    textOffset = 0,
   ) {
     const keyedSurface = paperMode ? `${item.id}::${surface}` : surface;
     return (
@@ -1235,6 +1259,7 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
         gap={gap}
         onSelection={selectText}
         className={className}
+        textOffset={textOffset}
       />
     );
   }
@@ -1318,20 +1343,40 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
         className="ct-choice-question"
         key={row.id}
         id={`ct-question-${row.id}`}
+        aria-describedby={`ct-prompt-${row.id}`}
       >
-        <legend>
-          <strong>
+        <legend className="ct-sr-only">
+          Question {row.number}
+          {row.endNumber > row.number ? `–${row.endNumber}` : ""}
+        </legend>
+        <div className="ct-choice-heading" id={`ct-prompt-${row.id}`}>
+          <strong aria-hidden="true">
             {row.number}
             {row.endNumber > row.number ? `–${row.endNumber}` : ""}
-          </strong>{" "}
-          {textOf(row.content)}
-        </legend>
+          </strong>
+          {renderContent(row.content, `prompt-${row.id}`)}
+        </div>
         {row.options.map((option) => {
           const checked = multiple
             ? selected.includes(option.value)
             : session.answers[row.id] === option.value;
           return (
-            <label key={option.value}>
+            <label
+              key={option.value}
+              onClick={(event) => {
+                if (event.target instanceof HTMLInputElement) return;
+                const target = event.target as HTMLElement;
+                const selectedText = window.getSelection();
+                if (
+                  target.closest("[data-ct-mark]") ||
+                  (selectedText &&
+                    !selectedText.isCollapsed &&
+                    event.currentTarget.contains(selectedText.anchorNode) &&
+                    event.currentTarget.contains(selectedText.focusNode))
+                )
+                  event.preventDefault();
+              }}
+            >
               <input
                 type={multiple ? "checkbox" : "radio"}
                 name={`ct-${row.id}`}
@@ -1365,6 +1410,7 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
     );
   }
   function groupView(group: QuestionGroup) {
+    const matrix = matchingMatrix(group);
     const slots = group.rows.flatMap((row) =>
       Array.from({ length: row.slots }, (_, slot) => ({ row, slot })),
     );
@@ -1382,9 +1428,10 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
           {group.end > group.start ? `–${group.end}` : ""}
         </h2>
         {renderContent(group.description, `instructions-${group.id}`)}
-        {group.optionsTitle &&
+        {!matrix &&
+          group.optionsTitle &&
           renderContent(group.optionsTitle, `options-title-${group.id}`)}
-        {group.type === "4" && (
+        {group.type === "4" && !matrix && (
           <div className="ct-option-bank">
             {group.rows[0]?.options.map((option) => (
               <div
@@ -1416,7 +1463,106 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
             alt="Matching options"
           />
         )}
-        {group.content &&
+        {matrix && (
+          <>
+            <div className="ct-match-matrix-frame">
+              <table
+                className="ct-match-matrix"
+                style={{ minWidth: 220 + matrix.options.length * 42 }}
+                aria-label="Table of options to match"
+              >
+                <thead>
+                  <tr>
+                    <th scope="col">
+                      <span className="ct-sr-only">Statement</span>
+                    </th>
+                    {matrix.options.map((option) => (
+                      <th key={option.value} scope="col">
+                        {option.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {matrix.rows.map((statement) => {
+                    const row = rowMap.get(statement.rowId)!;
+                    // Retain original content-surface offsets so existing highlights survive the layout change.
+                    const prefix = document.createElement("div");
+                    prefix.innerHTML = safeHTML(statement.beforeHtml);
+                    const offset = (prefix.textContent || "").replace(
+                      /\.{6}/g,
+                      "",
+                    ).length;
+                    return (
+                      <tr key={row.id} id={`ct-question-${row.id}`}>
+                        <th scope="row">
+                          <div className="ct-matrix-statement">
+                            <strong
+                              className={`ct-matrix-number ${activeNumber === row.number ? "ct-active" : ""}`}
+                            >
+                              {row.number}
+                            </strong>
+                            {renderContent(
+                              statement.html,
+                              `content-${group.id}`,
+                              undefined,
+                              "",
+                              offset,
+                            )}
+                          </div>
+                        </th>
+                        {matrix.options.map((option) => (
+                          <td key={option.value}>
+                            <label>
+                              <input
+                                type="radio"
+                                name={`ct-${row.id}`}
+                                value={option.value}
+                                checked={
+                                  session.answers[row.id] === option.value
+                                }
+                                disabled={submitting}
+                                aria-label={`Question ${row.number}, ${option.label}`}
+                                onFocus={() => focusRow(row)}
+                                onChange={() => answer(row, option.value)}
+                              />
+                            </label>
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {(matrix.kind === "features" || group.optionsTitle) && (
+              <div className="ct-match-legend">
+                {group.optionsTitle ? (
+                  renderContent(group.optionsTitle, `options-title-${group.id}`)
+                ) : (
+                  <strong>List of options</strong>
+                )}
+                <table aria-label="Matching option descriptions">
+                  <tbody>
+                    {matrix.options.map((option) => (
+                      <tr key={option.value}>
+                        <th scope="row">{option.label}</th>
+                        <td>
+                          {renderContent(
+                            option.content,
+                            `matching-option-${group.id}-${option.value}`,
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+        {!matrix &&
+          group.content &&
           renderContent(
             group.content,
             `content-${group.id}`,
@@ -1438,7 +1584,7 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
               alt="Question illustration"
             />
           )}
-        {["1", "2", "3"].includes(group.type) ? (
+        {matrix ? null : ["1", "2", "3"].includes(group.type) ? (
           group.rows.map(choices)
         ) : !inline ? (
           <>
@@ -1928,35 +2074,38 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
                           <label>
                             <input
                               type="checkbox"
-                              checked={session.marked.includes(activeNumber)}
+                              checked={
+                                !!activeEntry &&
+                                navigationEntryMarked(
+                                  activeEntry,
+                                  session.marked,
+                                )
+                              }
                               onChange={() => markQuestion(activeNumber)}
                             />{" "}
-                            Mark question {activeNumber} for review
+                            Mark question {activeEntry?.label || activeNumber}{" "}
+                            for review
                           </label>
                         </div>
                       </div>
                       <div className="ct-step-controls">
                         <button
                           aria-label="Previous question"
-                          disabled={activeNumber === firstOverall}
-                          onClick={() => {
-                            const index = navigation.findIndex(
-                              (nav) => nav.number === activeNumber,
-                            );
-                            go(navigation[index - 1]?.number);
-                          }}
+                          disabled={activeEntryIndex <= 0}
+                          onClick={() =>
+                            go(navigationEntries[activeEntryIndex - 1]?.number)
+                          }
                         >
                           <ArrowLeft size={27} />
                         </button>
                         <button
                           aria-label="Next question"
-                          disabled={activeNumber === lastOverall}
-                          onClick={() => {
-                            const index = navigation.findIndex(
-                              (nav) => nav.number === activeNumber,
-                            );
-                            go(navigation[index + 1]?.number);
-                          }}
+                          disabled={
+                            activeEntryIndex >= navigationEntries.length - 1
+                          }
+                          onClick={() =>
+                            go(navigationEntries[activeEntryIndex + 1]?.number)
+                          }
                         >
                           <ArrowRight size={27} />
                         </button>
@@ -2003,25 +2152,31 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
               </p>
               <h2>{paperMode ? "All parts" : `Part ${part}`}</h2>
               <div className="ct-review-grid">
-                {navigation.map((nav) => (
-                  <button
-                    key={nav.number}
-                    className={`${answeredQuestion(nav, rowMap.get(nav.rowId)!, session.answers) ? "ct-is-answered" : ""} ${session.marked.includes(nav.number) ? "ct-marked" : ""}`}
-                    onClick={() => go(nav.number)}
-                  >
-                    <strong>{nav.number}</strong>
-                    <span>
-                      {answeredQuestion(
-                        nav,
-                        rowMap.get(nav.rowId)!,
-                        session.answers,
-                      )
-                        ? "Answered"
-                        : "Not answered"}
-                    </span>
-                    {session.marked.includes(nav.number) && <Flag size={15} />}
-                  </button>
-                ))}
+                {navigationEntries.map((nav) => {
+                  const progress = navigationEntryProgress(
+                    nav,
+                    rowMap.get(nav.rowId)!,
+                    session.answers,
+                  );
+                  const marked = navigationEntryMarked(nav, session.marked);
+                  return (
+                    <button
+                      key={nav.number}
+                      className={`${progress.complete ? "ct-is-answered" : ""} ${marked ? "ct-marked" : ""}`}
+                      onClick={() => go(nav.number)}
+                    >
+                      <strong>{nav.label}</strong>
+                      <span>
+                        {progress.complete
+                          ? "Answered"
+                          : progress.answered
+                            ? `${progress.answered} of ${progress.total} answered`
+                            : "Not answered"}
+                      </span>
+                      {marked && <Flag size={15} />}
+                    </button>
+                  );
+                })}
               </div>
               {paperMode && listening && !session.audioEnded && (
                 <p className="ct-paper-notice">
@@ -2126,8 +2281,12 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
                         session.answers,
                       ),
                     ).length;
-                    const reviewCount = navs.filter((nav) =>
-                      session.marked.includes(nav.number),
+                    const entries = navigationEntries.filter(
+                      (nav) =>
+                        nav.number >= entry.first && nav.number <= entry.last,
+                    );
+                    const reviewCount = entries.filter((nav) =>
+                      navigationEntryMarked(nav, session.marked),
                     ).length;
                     const expanded = index === viewedPart;
                     return (
@@ -2159,7 +2318,7 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
                           id={`ct-part-questions-${index}`}
                           hidden={!expanded}
                         >
-                          {questionButtons(navs)}
+                          {questionButtons(entries)}
                         </div>
                       </div>
                     );
@@ -2172,7 +2331,7 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
                     className="ct-question-numbers"
                     aria-label="Question navigation"
                   >
-                    {questionButtons(navigation)}
+                    {questionButtons(navigationEntries)}
                   </nav>
                 </div>
               )}
