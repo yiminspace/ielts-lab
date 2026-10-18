@@ -25,6 +25,150 @@ export function questionNavigation(groups) {
     ),
   );
 }
+/** Display one navigation entry per task; keep questionNavigation for scoring slots. */
+export function questionNavigationEntries(groups) {
+  return groups.flatMap((group) =>
+    group.rows.map((row) => ({
+      number: row.number,
+      endNumber: row.endNumber,
+      label:
+        row.endNumber > row.number
+          ? `${row.number}–${row.endNumber}`
+          : String(row.number),
+      rowId: row.id,
+      groupId: group.id,
+      offset: 0,
+    })),
+  );
+}
+export function navigationEntryProgress(entry, row, answers) {
+  const total = Math.max(1, entry.endNumber - entry.number + 1);
+  let answered = 0;
+  for (let offset = 0; offset < total; offset++)
+    if (answeredQuestion({ ...entry, offset }, row, answers)) answered++;
+  return { answered, total, complete: answered === total };
+}
+export function navigationEntryMarked(entry, marked) {
+  return marked.some(
+    (number) => number >= entry.number && number <= entry.endNumber,
+  );
+}
+/** Read legacy per-slot markers as one group without changing saved answer keys. */
+export function toggleNavigationEntryMark(entry, marked) {
+  const rest = marked.filter(
+    (number) => number < entry.number || number > entry.endNumber,
+  );
+  return navigationEntryMarked(entry, marked) ? rest : [...rest, entry.number];
+}
+/** Opt in only when both the instructions and an unambiguous row layout match
+ * the observed information/features matrix. Answer keys are never consulted. */
+export function matchingMatrix(group) {
+  if (group.type !== "4" || !group.rows.length) return null;
+  const options = group.rows[0].options;
+  if (
+    options.length < 2 ||
+    options.length > 12 ||
+    options.some(
+      (option, index) => option.label !== String.fromCharCode(65 + index),
+    ) ||
+    group.rows.some(
+      (row) =>
+        row.slots !== 1 ||
+        row.options.length !== options.length ||
+        row.options.some(
+          (option, index) =>
+            option.value !== options[index].value ||
+            option.label !== options[index].label,
+        ),
+    )
+  )
+    return null;
+  const instruction = String(group.description || "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (
+    !/\bmay\s+(?:use|choose)\b[^.!?]{0,100}\bmore than once\b/i.test(
+      instruction,
+    )
+  )
+    return null;
+  if (
+    /\b(?:headings?|sentence endings?|complete (?:each|the) sentence)\b/i.test(
+      instruction,
+    )
+  )
+    return null;
+  const forWhichStatement =
+    /\bfor which\b[^.!?]{0,120}\bfollowing statements?\b[^.!?]{0,30}\btrue\b/i.test(
+      instruction,
+    );
+  const information =
+    /\bwhich\s+(?:paragraph|section|notice|text|advertisement)s?\b[^.!?]{0,100}\b(?:contains?|mentions?)\b[^.!?]{0,80}\bfollowing\b/i.test(
+      instruction,
+    ) ||
+    /\bmatch each statement\b[^.!?]{0,80}\b(?:paragraph|section|notice|text|advertisement)\b/i.test(
+      instruction,
+    ) ||
+    (/\b(?:notices?|paragraphs?|sections?|advertisements?)\b/i.test(
+      instruction,
+    ) &&
+      /\bwhich\b[^.!?]{0,100}\bstatements?\b[^.!?]{0,30}\btrue\b/i.test(
+        instruction,
+      ));
+  const features =
+    forWhichStatement ||
+    /\bmatch each (?:statement|project)\b[^.!?]{0,120}\bwith (?:the )?correct\b/i.test(
+      instruction,
+    ) ||
+    /\bchoose (?:the )?correct\b[^.!?]{0,100}\bfor each statement\b/i.test(
+      instruction,
+    );
+  if (!information && !features) return null;
+  const source = String(group.content || "");
+  const blocks = [
+    ...source.matchAll(/<(p|li)\b[^>]*>([\s\S]*?)<\/\1\s*>/gi),
+  ].filter((block) =>
+    block[2]
+      .replace(/<\/?(?:span|strong|b|em|i|br)\b[^>]*>/gi, "")
+      .replace(/&nbsp;|&#160;|\s/gi, ""),
+  );
+  const outside = source
+    .replace(/<(p|li)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "")
+    .replace(/<\/?(?:ol|ul)\b[^>]*>/gi, "")
+    .trim();
+  if (outside || blocks.length !== group.rows.length) return null;
+  const rows = [];
+  for (let index = 0; index < blocks.length; index++) {
+    const block = blocks[index],
+      row = group.rows[index];
+    const inner = block[2];
+    if (
+      (inner.match(/\.{6}/g) || []).length !== 1 ||
+      /<(?:p|li|table)\b/i.test(inner)
+    )
+      return null;
+    const prefix = inner.match(
+      /^\s*(?:\d+[.)]\s+|<(?:strong|b)>\s*\d+[.)]?\s*<\/(?:strong|b)>\s*)/i,
+    );
+    if (
+      prefix &&
+      Number(prefix[0].replace(/<[^>]*>/g, "").match(/\d+/)?.[0]) !== row.number
+    )
+      return null;
+    const removed = prefix?.[0] || "";
+    const html = inner.slice(removed.length).replace("......", "");
+    if (!html.replace(/<[^>]*>/g, "").trim()) return null;
+    rows.push({
+      rowId: row.id,
+      html,
+      beforeHtml:
+        source.slice(0, block.index + block[0].indexOf(">") + 1) + removed,
+    });
+  }
+  return { kind: information ? "information" : "features", options, rows };
+}
 export function answeredQuestion(nav, row, answers) {
   const answer = answers[row.id];
   if (row.type === "2")
@@ -214,6 +358,27 @@ export function navigationDestination(numbers, current, key) {
   if (key === "ArrowRight")
     return numbers[Math.min(numbers.length - 1, Math.max(0, index) + 1)];
   return null;
+}
+/** Scroll only the question viewport. Element.scrollIntoView also scrolls its
+ * overflow-hidden ancestors, which can shift the entire fixed test frame. */
+export function scrollQuestionWithinPane(pane, target) {
+  if (!pane || !target || !pane.contains(target)) return false;
+  const viewport = pane.getBoundingClientRect();
+  const question = target.getBoundingClientRect();
+  const centerSpace = Math.max(0, (pane.clientHeight - question.height) / 2);
+  const top = Math.max(
+    0,
+    Math.min(
+      Math.max(0, pane.scrollHeight - pane.clientHeight),
+      pane.scrollTop +
+        question.top -
+        viewport.top -
+        pane.clientTop -
+        centerSpace,
+    ),
+  );
+  pane.scrollTo({ top, left: pane.scrollLeft, behavior: "auto" });
+  return true;
 }
 export function splitByKeyboard(current, key) {
   if (key === "Home") return 30;

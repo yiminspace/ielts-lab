@@ -4,6 +4,11 @@ import {
   remainingSeconds,
   elapsedSeconds,
   questionNavigation,
+  questionNavigationEntries,
+  navigationEntryProgress,
+  navigationEntryMarked,
+  toggleNavigationEntryMark,
+  scrollQuestionWithinPane,
   answeredQuestion,
   optionFromDrop,
   examDraftKey,
@@ -18,7 +23,7 @@ test("deadline clock remains correct after background suspension and expires at 
   assert.equal(elapsedSeconds(0, 120000, 60000), 60);
   assert.equal(elapsedSeconds(0, 120000, null), 120);
 });
-test("individual question navigation expands a multi-select row without changing answer keys", () => {
+test("scoring slots remain separate while a multi-select task has one navigation entry and answer key", () => {
   const groups = buildGroups({
     questions: [
       {
@@ -50,9 +55,71 @@ test("individual question navigation expands a multi-select row without changing
   );
   assert.equal(nav[0].rowId, nav[1].rowId);
   const row = groups[0].rows[0];
+  const entries = questionNavigationEntries(groups);
+  assert.deepEqual(
+    entries.map((entry) => entry.label),
+    ["6–7"],
+  );
+  assert.equal(entries[0].rowId, row.id);
+  assert.deepEqual(navigationEntryProgress(entries[0], row, {}), {
+    answered: 0,
+    total: 2,
+    complete: false,
+  });
+  assert.deepEqual(navigationEntryProgress(entries[0], row, { "0:0": ["0"] }), {
+    answered: 1,
+    total: 2,
+    complete: false,
+  });
+  assert.deepEqual(
+    navigationEntryProgress(entries[0], row, { "0:0": ["0", "2"] }),
+    {
+      answered: 2,
+      total: 2,
+      complete: true,
+    },
+  );
   assert.equal(answeredQuestion(nav[0], row, { "0:0": ["0"] }), true);
   assert.equal(answeredQuestion(nav[1], row, { "0:0": ["0"] }), false);
   assert.equal(answeredQuestion(nav[1], row, { "0:0": ["0", "2"] }), true);
+});
+test("legacy per-slot review marks map to one task and toggle without altering other tasks", () => {
+  const entry = {
+    number: 6,
+    endNumber: 7,
+    label: "6–7",
+    rowId: "0:0",
+    groupId: "0",
+    offset: 0,
+  };
+  const savedMarks = [2, 7, 9];
+  assert.equal(navigationEntryMarked(entry, savedMarks), true);
+  assert.deepEqual(toggleNavigationEntryMark(entry, savedMarks), [2, 9]);
+  assert.deepEqual(savedMarks, [2, 7, 9]);
+  assert.deepEqual(toggleNavigationEntryMark(entry, [2, 6, 7, 9]), [2, 9]);
+  assert.deepEqual(toggleNavigationEntryMark(entry, [2, 9]), [2, 9, 6]);
+  assert.equal(navigationEntryMarked(entry, [2, 9]), false);
+});
+test("two blanks sharing one score remain one numbered task and require both blanks", () => {
+  const groups = buildGroups({
+    questions: [
+      {
+        questionJson: { questionType: "0", startIndex: 3, questionNum: 1 },
+        answerJson: [{ correctValue: "morning|evening" }],
+      },
+    ],
+  });
+  const [entry] = questionNavigationEntries(groups),
+    row = groups[0].rows[0];
+  assert.equal(entry.label, "3");
+  assert.deepEqual(
+    navigationEntryProgress(entry, row, { [row.id]: ["morning", ""] }),
+    { answered: 0, total: 1, complete: false },
+  );
+  assert.deepEqual(
+    navigationEntryProgress(entry, row, { [row.id]: ["morning", "evening"] }),
+    { answered: 1, total: 1, complete: true },
+  );
 });
 test("matching drops only accept values from the matching option group", () => {
   const options = [{ value: "0" }, { value: "1" }];
@@ -157,4 +224,44 @@ test("keyboard split resizing respects readable bounds and an explicit equal-wid
   assert.equal(splitByKeyboard(50, "End"), 70);
   assert.equal(splitByKeyboard(34, "Enter"), 50);
   assert.equal(splitByKeyboard(50, "Tab"), null);
+});
+test("question jumps scroll only the question pane and clamp tall or edge targets", () => {
+  const target = {
+    top: 900,
+    height: 80,
+    getBoundingClientRect() {
+      return { top: this.top, height: this.height };
+    },
+    scrollIntoView() {
+      throw new Error("Must not scroll ancestors");
+    },
+  };
+  const outer = { scrollTop: 0 };
+  const passage = { scrollTop: 240 };
+  const pane = {
+    scrollTop: 0,
+    scrollLeft: 9,
+    clientTop: 1,
+    clientHeight: 420,
+    scrollHeight: 1600,
+    contains: (element) => element === target,
+    getBoundingClientRect: () => ({ top: 140 }),
+    scrollTo: (options) => {
+      pane.scrollTop = options.top;
+      assert.equal(options.left, 9);
+    },
+  };
+  assert.equal(scrollQuestionWithinPane(pane, target), true);
+  assert.equal(pane.scrollTop, 589);
+  assert.equal(outer.scrollTop, 0);
+  assert.equal(passage.scrollTop, 240);
+  target.top = 1600;
+  target.height = 600;
+  scrollQuestionWithinPane(pane, target);
+  assert.equal(pane.scrollTop, 1180);
+  target.top = -2000;
+  scrollQuestionWithinPane(pane, target);
+  assert.equal(pane.scrollTop, 0);
+  assert.equal(scrollQuestionWithinPane(pane, {}), false);
+  assert.equal(scrollQuestionWithinPane(null, target), false);
 });
