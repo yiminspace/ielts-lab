@@ -151,14 +151,18 @@ export default function App() {
   const [route, query = ""] = fullRoute.split("?");
   const progress = useProgress();
   const saveError = useSaveError();
-  const reviewAttempt = progress.attempts.find(
-    (a) => a.id === new URLSearchParams(query).get("review"),
-  );
+  const reviewId = new URLSearchParams(query).get("review");
   const [library, setLibrary] = useState<Library | null>(null);
   const [error, setError] = useState("");
   const [menu, setMenu] = useState(false);
   const [search, setSearch] = useState("");
   const [item, setItem] = useState<StudyItem | null>(null);
+  const reviewAttempt = progress.attempts.find(
+    (attempt) =>
+      attempt.id === reviewId &&
+      attempt.itemId === item?.id &&
+      attempt.kind === item.kind,
+  );
   const [itemError, setItemError] = useState("");
   const [testTrack, setTestTrack] = useState<TrackChoice>(initialTrack);
   const selectTrack = (next: TrackChoice) => {
@@ -311,6 +315,51 @@ export default function App() {
           </Boundary>
         )}
       </>
+    );
+  }
+  if (
+    itemId &&
+    library &&
+    item?.id === itemId &&
+    reviewId !== null &&
+    !reviewAttempt
+  ) {
+    return (
+      <div className="empty" role="alert">
+        <h2>没有找到这次作答</h2>
+        <p>这条记录可能已移除，或属于另一份材料。请从练习记录重新打开。</p>
+        <button onClick={() => navigate("/history")}>返回练习记录</button>
+      </div>
+    );
+  }
+  if (
+    itemId &&
+    library &&
+    item &&
+    item.id === itemId &&
+    ["listening", "reading", "writing"].includes(item.kind)
+  ) {
+    const exit = () =>
+      navigate(reviewAttempt ? "/history" : `/library/${item.kind}`);
+    const exam = () => navigate("/exam/" + encodeURIComponent(item.id));
+    return (
+      <Boundary key={`practice:${item.id}:${reviewAttempt?.id || "draft"}`}>
+        {item.kind === "writing" ? (
+          <StudyWorkspace
+            item={item}
+            reviewAttempt={reviewAttempt}
+            onExit={exit}
+            onExam={exam}
+          />
+        ) : (
+          <ExamWorkspace
+            item={item}
+            reviewAttempt={reviewAttempt}
+            onExit={exit}
+            onExam={exam}
+          />
+        )}
+      </Boundary>
     );
   }
   return (
@@ -501,31 +550,7 @@ export default function App() {
                       {progress.bookmarks.includes(item.id) ? "已收藏" : "收藏"}
                     </button>
                   </div>
-                  {["listening", "reading", "writing"].includes(item.kind) &&
-                    !reviewAttempt && (
-                      <div className="computer-entry">
-                        <div>
-                          <strong>用机考界面练习</strong>
-                          <p>
-                            参照 IDP
-                            官方熟悉测试的布局与操作。当前练习这一节材料。
-                          </p>
-                        </div>
-                        <button
-                          className="button"
-                          onClick={() =>
-                            navigate("/exam/" + encodeURIComponent(item.id))
-                          }
-                        >
-                          进入机考界面 <ArrowRight size={17} />
-                        </button>
-                      </div>
-                    )}
-                  {["listening", "reading"].includes(item.kind) ? (
-                    <ExamWorkspace item={item} reviewAttempt={reviewAttempt} />
-                  ) : (
-                    <StudyWorkspace item={item} reviewAttempt={reviewAttempt} />
-                  )}
+                  <StudyWorkspace item={item} reviewAttempt={reviewAttempt} />
                   <details className="study-note">
                     <summary>
                       学习笔记{progress.notes[item.id] ? " · 已保存" : ""}
@@ -1096,7 +1121,9 @@ function HistoryView({ mistakes }: { mistakes: boolean }) {
                   )
                 }
               >
-                再练一次
+                {["listening", "reading", "writing"].includes(a.kind)
+                  ? "查看复盘"
+                  : "再练一次"}
               </button>
             </div>
           ))}

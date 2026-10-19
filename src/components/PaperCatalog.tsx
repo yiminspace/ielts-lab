@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, FileCheck2, Headphones } from "lucide-react";
+import { ArrowRight, Headphones } from "lucide-react";
 import type { ExamPaper } from "../types";
 import { useProgress } from "../lib/progress";
 import { paperRunKey, restorePaperRun } from "../lib/paper-session.mjs";
@@ -28,11 +28,10 @@ export default function PaperCatalog() {
     <section className="paper-catalog">
       <div className="page-heading">
         <div>
-          <p className="paper-eyebrow">GENERAL TRAINING · COMPUTER PRACTICE</p>
+          <p className="paper-eyebrow">General Training · 机考练习</p>
           <h1>G 类完整套卷</h1>
           <p>听力、阅读、写作连续进行。每一科提交后自动进入下一科。</p>
         </div>
-        <FileCheck2 size={36} />
       </div>
       <div className="paper-rules-strip">
         <span>
