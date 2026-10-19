@@ -7,6 +7,7 @@ import ts from "typescript";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import * as study from "../src/lib/study.mjs";
+import * as writingUi from "../src/lib/computer-writing-ui.mjs";
 
 const attempt = {
   id: "saved-writing",
@@ -80,7 +81,7 @@ const code = ts.transpileModule(
   },
 ).outputText;
 const require = createRequire(import.meta.url);
-function renderReview(reviewAttempt) {
+function renderReview(reviewAttempt, savedDraft = {}) {
   const calls = { draftReads: 0, writes: 0 };
   const context = vm.createContext({
     exports: {},
@@ -91,7 +92,11 @@ function renderReview(reviewAttempt) {
             calls.draftReads++;
             return {
               drafts: {
-                letter: { text: "Current unsaved study draft", seconds: 777 },
+                letter: {
+                  text: "Current unsaved study draft",
+                  seconds: 777,
+                  ...savedDraft,
+                },
               },
             };
           },
@@ -103,6 +108,28 @@ function renderReview(reviewAttempt) {
           },
         };
       if (name === "../lib/study.mjs") return study;
+      if (name === "../lib/computer-writing-ui.mjs") return writingUi;
+      if (name === "./PracticeFrame")
+        return {
+          default: ({
+            status,
+            instruction,
+            actions,
+            tools,
+            children,
+            footer,
+          }) =>
+            React.createElement(
+              "main",
+              null,
+              status,
+              instruction,
+              actions,
+              tools,
+              children,
+              footer,
+            ),
+        };
       if (name === "../lib/content")
         return {
           RichText: ({ html }) => React.createElement("div", null, html),
@@ -157,4 +184,118 @@ test("blank historical writing remains blank and ordinary entry still restores t
   assert.match(ordinary.html, /Current unsaved study draft/);
   assert.match(ordinary.html, /开始计时/);
   assert.ok(ordinary.calls.draftReads > 0);
+});
+
+test("invalid or mismatched history never falls back to the current writing draft", () => {
+  for (const reviewAttempt of [
+    { ...attempt, answers: {} },
+    { ...attempt, itemId: "another-item" },
+  ]) {
+    const { html, calls } = renderReview(reviewAttempt);
+    assert.match(html, /这条历史记录没有可复盘的作文/);
+    assert.doesNotMatch(html, /Current unsaved study draft|开始计时|完成练习/);
+    assert.deepEqual(calls, { draftReads: 0, writes: 0 });
+  }
+});
+
+test("reopening a completed practice keeps its response read-only until continuing to edit", () => {
+  const { html } = renderReview(undefined, { practiceStatus: "completed" });
+  assert.match(html, /Current unsaved study draft/);
+  assert.match(html, /readonly=""/i);
+  assert.match(html, /继续编辑/);
+  assert.match(html, /本次作答已保存/);
+  assert.doesNotMatch(html, /开始计时|完成练习|保存本次练习/);
+});
+
+test("finishing writing records once, snapshots notes, and preserves the separate exam draft", () => {
+  const progress = {
+    drafts: {
+      letter: { text: "My first response", seconds: 50 },
+      "exam:letter": { text: "Separate exam response", status: "running" },
+    },
+    notes: { letter: "Notes at submission" },
+  };
+  const examBefore = structuredClone(progress.drafts["exam:letter"]);
+  const recorded = [];
+  const hooks = [];
+  let cursor = 0;
+  const context = vm.createContext({
+    exports: {},
+    window: { setTimeout: (callback) => callback() },
+    require: (name) => {
+      if (name === "react")
+        return {
+          ...React,
+          useState: (initial) => {
+            const slot = cursor++;
+            if (!(slot in hooks))
+              hooks[slot] = typeof initial === "function" ? initial() : initial;
+            return [
+              hooks[slot],
+              (next) => {
+                hooks[slot] =
+                  typeof next === "function" ? next(hooks[slot]) : next;
+              },
+            ];
+          },
+          useRef: (initial) => {
+            const slot = cursor++;
+            return (hooks[slot] ||= { current: initial });
+          },
+          useEffect: () => {},
+        };
+      if (name === "../lib/progress")
+        return {
+          getProgress: () => progress,
+          saveDraft: (id, value) => {
+            progress.drafts[id] = value;
+          },
+          recordAttempt: (value) => recorded.push(value),
+        };
+      if (name === "../lib/study.mjs") return study;
+      if (name === "../lib/computer-writing-ui.mjs") return writingUi;
+      if (name === "./PracticeFrame" || name === "../lib/content") return {};
+      if (name.endsWith(".css")) return {};
+      return require(name);
+    },
+  });
+  vm.runInContext(code, context);
+  const render = () => {
+    cursor = 0;
+    return context.WritingPractice({
+      item: {
+        id: "letter",
+        title: "Letter",
+        kind: "writing",
+        data: { writingPart: 1 },
+      },
+    });
+  };
+  const save = (frame) => frame.props.children[0].props.children[2];
+  let frame = render();
+  frame.props.actions.props.onClick();
+  frame = render();
+  const saveButton = save(frame);
+  saveButton.props.onClick();
+  saveButton.props.onClick();
+  assert.equal(recorded.length, 1);
+  assert.equal(recorded[0].answers.essay, "My first response");
+  assert.equal(recorded[0].answers.notes, "Notes at submission");
+  assert.equal(progress.drafts.letter.practiceStatus, "completed");
+  assert.deepEqual(progress.drafts["exam:letter"], examBefore);
+
+  frame = render();
+  assert.equal(frame.props.actions.props.children, "继续编辑");
+  frame.props.actions.props.onClick();
+  frame = render();
+  const editor = frame.props.children[1].props.children[1];
+  editor.props.onChange({ target: { value: "A revised response" } });
+  frame = render();
+  frame.props.actions.props.onClick();
+  frame = render();
+  save(frame).props.onClick();
+  assert.equal(recorded.length, 2);
+  assert.equal(recorded[1].answers.essay, "A revised response");
+  assert.equal(recorded[0].answers.essay, "My first response");
+  assert.deepEqual(progress.drafts["exam:letter"], examBefore);
 });
