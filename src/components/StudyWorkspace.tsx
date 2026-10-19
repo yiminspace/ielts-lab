@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   BookOpen,
   Check,
   ChevronLeft,
   ChevronRight,
   Download,
+  GripVertical,
   Mic,
   Pause,
   Play,
@@ -23,7 +24,13 @@ import {
   reviewIndex,
   writingReview,
 } from "../lib/study.mjs";
+import {
+  writingSplit,
+  resizeWritingSplit,
+} from "../lib/computer-writing-ui.mjs";
+import PracticeFrame from "./PracticeFrame";
 import "../study.css";
+import "../practice-writing.css";
 
 type Row = Record<string, any>;
 function rows(data: any, keys = ["items", "sentences"]): Row[] {
@@ -232,16 +239,121 @@ function Voices({ item, row }: { item: StudyItem; row: Row }) {
   );
 }
 
-function Writing({
-  item,
-  reviewAttempt,
-}: {
+type WritingProps = {
   item: StudyItem;
   reviewAttempt?: Attempt;
+  onExit?: () => void;
+  onExam?: () => void;
+};
+
+function WritingPanes({
+  item,
+  children,
+}: {
+  item: StudyItem;
+  children: React.ReactNode;
 }) {
+  const panes = useRef<HTMLDivElement>(null);
+  const [split, setSplit] = useState(50);
+  const [resizing, setResizing] = useState(false);
+  const part = Number(item.data?.writingPart) === 1 ? 1 : 2;
+  function moveSplit(clientX: number) {
+    const bounds = panes.current?.getBoundingClientRect();
+    if (bounds?.width)
+      setSplit(writingSplit(((clientX - bounds.left) / bounds.width) * 100));
+  }
+  return (
+    <div
+      className={`pw-panes${resizing ? " pw-resizing" : ""}`}
+      ref={panes}
+      style={{ "--pw-split": `${split}%` } as CSSProperties}
+    >
+      <section id="pw-prompt" className="pw-prompt" aria-label="Writing task">
+        <h1>Writing Task {part}</h1>
+        {item.source === "original" && (
+          <p className="pw-original">Original practice material</p>
+        )}
+        <RichText
+          html={
+            item.data?.writingQuestion ||
+            item.data?.writingQuestionText ||
+            item.data?.prompt ||
+            ""
+          }
+        />
+      </section>
+      <div
+        className="pw-divider"
+        role="separator"
+        tabIndex={0}
+        aria-label="Resize writing panes"
+        aria-orientation="vertical"
+        aria-controls="pw-prompt pw-response"
+        aria-valuemin={30}
+        aria-valuemax={70}
+        aria-valuenow={Math.round(split)}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.currentTarget.focus();
+          event.currentTarget.setPointerCapture(event.pointerId);
+          setResizing(true);
+          moveSplit(event.clientX);
+        }}
+        onPointerMove={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId))
+            moveSplit(event.clientX);
+        }}
+        onPointerUp={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId))
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          setResizing(false);
+        }}
+        onLostPointerCapture={() => setResizing(false)}
+        onKeyDown={(event) => {
+          if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+            event.preventDefault();
+            setSplit((value) => resizeWritingSplit(value, event.key));
+          }
+        }}
+      >
+        <GripVertical size={20} aria-hidden="true" />
+      </div>
+      <section
+        id="pw-response"
+        className="pw-response"
+        aria-label="Writing response"
+      >
+        {children}
+      </section>
+    </div>
+  );
+}
+
+function Writing({ item, reviewAttempt, onExit, onExam }: WritingProps) {
   const review = writingReview(item.id, reviewAttempt);
-  if (review && reviewAttempt) {
-    const part = Number(item.data?.writingPart) === 1 ? 1 : 2;
+  const part = Number(item.data?.writingPart) === 1 ? 1 : 2;
+  const instruction = (
+    <>
+      <strong>Writing Task {part}</strong>
+      <span>
+        You should spend about {part === 1 ? 20 : 40} minutes on this task.
+        Write at least {part === 1 ? 150 : 250} words.
+      </span>
+    </>
+  );
+  if (reviewAttempt) {
+    if (!review)
+      return (
+        <PracticeFrame
+          item={item}
+          mode="review"
+          onExit={onExit}
+          onExam={onExam}
+          instruction={instruction}
+        >
+          <Empty>这条历史记录没有可复盘的作文。</Empty>
+        </PracticeFrame>
+      );
     const recordedDate = new Date(reviewAttempt.createdAt);
     const recordedAt = Number.isFinite(recordedDate.getTime())
       ? recordedDate.toLocaleString("zh-CN")
@@ -252,156 +364,167 @@ function Writing({
         ? "未记录"
         : formatTime(review.durationSeconds);
     return (
-      <div className="study-writing">
-        <section className="study-panel study-writing-prompt">
-          <div className="study-eyebrow">WRITING TASK {part} · 历史复习</div>
-          <h2>{item.title}</h2>
-          <RichText
-            html={
-              item.data?.writingQuestion ||
-              item.data?.writingQuestionText ||
-              item.data?.prompt ||
-              ""
+      <PracticeFrame
+        item={item}
+        mode="review"
+        onExit={onExit}
+        onExam={onExam}
+        instruction={instruction}
+        status={
+          <span>
+            {timingLabel} {duration}
+          </span>
+        }
+        actions={
+          <button
+            onClick={() =>
+              downloadText(
+                `${item.title}-${reviewAttempt.id}.txt`,
+                `${item.title}\n${recordedAt}\n${timingLabel} ${duration} · ${review.words} 词\n\n作文\n${review.text}\n\n笔记\n${review.notes}`,
+              )
             }
-          />
-        </section>
-        <section className="study-panel study-composer">
-          <p className="study-review-notice">
-            历史作答 · 只读{recordedAt ? ` · ${recordedAt}` : ""}
-          </p>
-          <div className="study-toolbar">
-            <div>
-              <strong>{review.words}</strong> 词
-            </div>
-            <span className="study-clock">
-              {timingLabel} {duration}
-            </span>
+          >
+            <Download size={16} /> 导出本次作答
+          </button>
+        }
+        footer={
+          <div className="pw-footer">
+            <span>Task {part}</span>
+            <span>历史作答 · 只读{recordedAt ? ` · ${recordedAt}` : ""}</span>
+            <span>未进行自动评分</span>
           </div>
-          <label className="study-sr-only" htmlFor="writing-history-answer">
-            该次提交的作文
+        }
+      >
+        <WritingPanes item={item}>
+          <label className="pw-answer-label" htmlFor="writing-history-answer">
+            Your saved response
           </label>
           <textarea
             id="writing-history-answer"
-            className="study-essay"
+            className="pw-editor"
             readOnly
             value={review.text}
             placeholder="该次未填写作文"
             spellCheck={false}
           />
-          <h3>该次笔记</h3>
-          <p className="study-history-notes">
-            {review.notes || "该次没有保存笔记。"}
-          </p>
-          <div className="study-toolbar study-toolbar-bottom">
-            <span className="study-muted">未进行自动评分</span>
-            <button
-              onClick={() =>
-                downloadText(
-                  `${item.title}-${reviewAttempt.id}.txt`,
-                  `${item.title}\n${recordedAt}\n${timingLabel} ${duration} · ${review.words} 词\n\n作文\n${review.text}\n\n笔记\n${review.notes}`,
-                )
-              }
-            >
-              <Download size={16} /> 导出本次作答
-            </button>
+          <div className="pw-word-count">
+            Word count: <strong>{review.words}</strong>
           </div>
-        </section>
-      </div>
+          <details className="pw-history-notes">
+            <summary>该次笔记（只读）</summary>
+            <p>{review.notes || "该次没有保存笔记。"}</p>
+          </details>
+        </WritingPanes>
+      </PracticeFrame>
     );
   }
-  return <WritingPractice item={item} />;
+  return <WritingPractice item={item} onExit={onExit} onExam={onExam} />;
 }
 
-function WritingPractice({ item }: { item: StudyItem }) {
-  const draft = getProgress().drafts[item.id] || {};
+function WritingPractice({ item, onExit, onExam }: WritingProps) {
+  const [draft] = useState(() => getProgress().drafts[item.id] || {});
   const [value, setValue] = useState(String(draft.text || ""));
-  const [saved, setSaved] = useState(false);
+  const [completed, setCompleted] = useState(
+    draft.practiceStatus === "completed",
+  );
+  const completedRef = useRef(completed);
+  const [confirmFinish, setConfirmFinish] = useState(false);
+  const editor = useRef<HTMLTextAreaElement>(null);
   const timer = useClock(Number(draft.seconds) || 0);
   const words = countWords(value);
-  const part = Number(item.data?.writingPart || 2);
-  const trackLabel =
-    item.testTrack === "general"
-      ? "General Training · G 类"
-      : item.testTrack === "academic"
-        ? "Academic · A 类"
-        : item.testTrack === "shared"
-          ? "A / G 通用"
-          : "类别待确认";
-  const taskLabel =
-    part === 2
-      ? "议论文写作"
-      : item.testTrack === "general"
-        ? "书信写作"
-        : item.testTrack === "academic"
-          ? "图表 / 图示描述"
-          : "Task 1 写作";
+  const part = Number(item.data?.writingPart) === 1 ? 1 : 2;
   const minWords = part === 1 ? 150 : 250;
-  const targetSeconds = (part === 1 ? 20 : 40) * 60;
   const timeBucket = Math.floor(timer.seconds / 5);
   useEffect(() => {
-    saveDraft(item.id, { text: value, seconds: timer.seconds });
-    setSaved(true);
-  }, [item.id, value, timeBucket]);
+    saveDraft(item.id, {
+      ...draft,
+      text: value,
+      seconds: timer.seconds,
+      practiceStatus: completed ? "completed" : "editing",
+    });
+  }, [item.id, value, timeBucket, timer.running, completed]);
+
+  function finish() {
+    if (completedRef.current || !value.trim()) return;
+    completedRef.current = true;
+    timer.setRunning(false);
+    setCompleted(true);
+    setConfirmFinish(false);
+    saveDraft(item.id, {
+      ...draft,
+      text: value,
+      seconds: timer.seconds,
+      practiceStatus: "completed",
+    });
+    recordAttempt({
+      itemId: item.id,
+      title: item.title,
+      kind: item.kind,
+      durationSeconds: timer.seconds,
+      answers: { essay: value, notes: getProgress().notes[item.id] || "" },
+      detail: `完成写作，${words} 词`,
+    });
+  }
   return (
-    <div className="study-writing">
-      <section className="study-panel study-writing-prompt">
-        <div className="study-eyebrow">
-          {trackLabel} · WRITING TASK {part}
-        </div>
-        <h2>{taskLabel}</h2>
-        {item.source === "original" && (
-          <p className="study-original-label">原创练习材料</p>
-        )}
-        <RichText
-          html={
-            item.data?.writingQuestion ||
-            item.data?.writingQuestionText ||
-            item.data?.prompt ||
-            ""
-          }
-        />
-        <div className="study-hint">
-          建议用时 {part === 1 ? 20 : 40} 分钟 · 至少 {minWords} 词
-        </div>
-      </section>
-      <section className="study-panel study-composer">
-        <div className="study-toolbar">
-          <div>
-            <strong>{words}</strong> 词{" "}
-            <span className="study-muted">/ {minWords} 词</span>
-          </div>
-          <span
-            className={
-              timer.seconds > targetSeconds ? "study-warning" : "study-clock"
-            }
-          >
-            {formatTime(timer.seconds)}
+    <PracticeFrame
+      item={item}
+      mode="practice"
+      onExit={onExit}
+      onExam={onExam}
+      instruction={
+        <>
+          <strong>Writing Task {part}</strong>
+          <span>
+            You should spend about {part === 1 ? 20 : 40} minutes on this task.
+            Write at least {minWords} words.
           </span>
+        </>
+      }
+      status={
+        <>
+          <span>
+            {completed ? "本次用时" : "已用时"} {formatTime(timer.seconds)}
+          </span>
+          {!completed && (
+            <button
+              onClick={() => timer.setRunning(!timer.running)}
+              aria-label={timer.running ? "暂停计时" : "开始计时"}
+            >
+              {timer.running ? <Pause size={16} /> : <Play size={16} />}
+            </button>
+          )}
+        </>
+      }
+      actions={
+        completed ? (
           <button
-            className="study-icon-button"
-            onClick={() => timer.setRunning(!timer.running)}
-            aria-label={timer.running ? "暂停计时" : "开始计时"}
+            onClick={() => {
+              completedRef.current = false;
+              setCompleted(false);
+              timer.setSeconds(0);
+              timer.setRunning(false);
+              window.setTimeout(() => editor.current?.focus(), 0);
+            }}
           >
-            {timer.running ? <Pause size={17} /> : <Play size={17} />}
+            继续编辑
           </button>
-        </div>
-        <label className="study-sr-only" htmlFor="writing-answer">
-          你的作文
-        </label>
-        <textarea
-          id="writing-answer"
-          className="study-essay"
-          placeholder="Write your response here…"
-          value={value}
-          onChange={(e) => {
-            setValue(e.target.value);
-            if (!timer.running && timer.seconds === 0) timer.setRunning(true);
-          }}
-          spellCheck={false}
-        />
-        <div className="study-toolbar study-toolbar-bottom">
-          <span className="study-muted" aria-live="polite">
-            {saved ? "已自动保存" : "保存中…"}
+        ) : (
+          <button
+            className="pw-finish"
+            disabled={!value.trim() || confirmFinish}
+            onClick={() => setConfirmFinish(true)}
+          >
+            完成练习
+          </button>
+        )
+      }
+      footer={
+        <div className="pw-footer">
+          <span>Task {part}</span>
+          <span role="status">
+            {completed
+              ? "本次作答已保存 · 未进行自动评分"
+              : "草稿自动保存 · 日常练习"}
           </span>
           <button
             onClick={() => downloadText(`${item.title}.txt`, value)}
@@ -409,28 +532,54 @@ function WritingPractice({ item }: { item: StudyItem }) {
           >
             <Download size={16} /> 导出作文
           </button>
-          <button
-            className="primary"
-            disabled={!value.trim()}
-            onClick={() => {
-              timer.setRunning(false);
-              saveDraft(item.id, { text: value, seconds: timer.seconds });
-              recordAttempt({
-                itemId: item.id,
-                title: item.title,
-                kind: item.kind,
-                durationSeconds: timer.seconds,
-                answers: { essay: value },
-                detail: `完成写作，${words} 词`,
-              });
-              setSaved(true);
-            }}
-          >
+        </div>
+      }
+    >
+      {confirmFinish && (
+        <section
+          className="pw-confirm"
+          role="dialog"
+          aria-labelledby="pw-finish-title"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setConfirmFinish(false);
+          }}
+        >
+          <div>
+            <strong id="pw-finish-title">保存本次作答？</strong>
+            <p>
+              共 {words} 词，用时 {formatTime(timer.seconds)}
+              。保存后可在练习记录中复盘；作文不自动评分。
+            </p>
+          </div>
+          <button onClick={() => setConfirmFinish(false)}>继续作答</button>
+          <button autoFocus className="pw-finish" onClick={finish}>
             保存本次练习
           </button>
+        </section>
+      )}
+      <WritingPanes item={item}>
+        <label className="pw-answer-label" htmlFor="writing-answer">
+          {completed ? "Your saved response" : "Write your answer below."}
+        </label>
+        <textarea
+          id="writing-answer"
+          ref={editor}
+          className="pw-editor"
+          placeholder="Write your response here…"
+          value={value}
+          readOnly={completed}
+          onChange={(event) => {
+            if (completedRef.current) return;
+            setValue(event.target.value);
+            if (!timer.running && timer.seconds === 0) timer.setRunning(true);
+          }}
+          spellCheck={false}
+        />
+        <div className="pw-word-count">
+          Word count: <strong>{words}</strong>
         </div>
-      </section>
-    </div>
+      </WritingPanes>
+    </PracticeFrame>
   );
 }
 
@@ -1444,16 +1593,17 @@ function Courses({ item }: { item: StudyItem }) {
   );
 }
 
-function Workspace({
-  item,
-  reviewAttempt,
-}: {
-  item: StudyItem;
-  reviewAttempt?: Attempt;
-}) {
+function Workspace({ item, reviewAttempt, onExit, onExam }: WritingProps) {
   switch (item.kind) {
     case "writing":
-      return <Writing item={item} reviewAttempt={reviewAttempt} />;
+      return (
+        <Writing
+          item={item}
+          reviewAttempt={reviewAttempt}
+          onExit={onExit}
+          onExam={onExam}
+        />
+      );
     case "speaking":
       return <Speaking item={item} />;
     case "vocabulary":
@@ -1474,10 +1624,9 @@ function Workspace({
 export default function StudyWorkspace({
   item,
   reviewAttempt,
-}: {
-  item: StudyItem;
-  reviewAttempt?: Attempt;
-}) {
+  onExit,
+  onExam,
+}: WritingProps) {
   return (
     <div className="study-workspace">
       {reviewAttempt &&
@@ -1490,6 +1639,8 @@ export default function StudyWorkspace({
         key={`${item.kind}:${item.id}:${reviewAttempt?.id || "resume"}`}
         item={item}
         reviewAttempt={reviewAttempt}
+        onExit={onExit}
+        onExam={onExam}
       />
     </div>
   );
