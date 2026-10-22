@@ -706,6 +706,9 @@
 }
 .exam-transcript-target {
   display: block;
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
   margin-bottom: 3px;
   font-size: 0.8em;
   font-weight: 700;
