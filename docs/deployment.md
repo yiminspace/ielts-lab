@@ -56,9 +56,14 @@ the authorization boundary. Native audio/video Range requests use this cookie.
    `DEPLOY_KNOWN_HOSTS`, and Variables `DEPLOY_HOST`, `DEPLOY_USER`.
    `DEPLOY_KNOWN_HOSTS` must contain a previously verified host key. Do not turn
    off strict host-key checking or blindly trust a fresh network scan.
-8. Ensure both GHCR packages are public. New GHCR package visibility may require
-   an explicit package-settings change even when the source repository is
-   public. Verify anonymous pulls before the first production deployment.
+8. Choose GHCR package visibility independently from source visibility. Private
+   packages require a server-side registry login with read access; the trusted
+   administrator installs it in root's private Docker credentials, which Docker
+   and Skopeo can read. Do not send registry credentials to the application or
+   give them to the restricted SSH user. Public packages permit anonymous pulls
+   but are optional. GHCR currently provides container image storage and bandwidth
+   free for both public and private packages; see GitHub's
+   [billing policy](https://docs.github.com/en/billing/concepts/product-billing/github-packages).
 
 Bootstrap and root-owned script updates are trusted administrator actions;
 normal releases do not replace the deployment scripts or Compose manifest.
@@ -90,10 +95,36 @@ and image isolation checks. It then publishes `sha-<commit>` tags and deploys
 using exact `sha256` digests. The build jobs never receive production secrets.
 The protected deployment job decrypts the two configuration files and streams a
 bounded tar payload through SSH to the fixed release entry point.
+SSH keepalives preserve that connection during a slow, bounded registry transfer.
 
-The server pulls both images, runs migrations, installs mode-600 runtime
-configuration, starts Compose without building, and checks API/Web health
-against the same commit SHA. A successful release saves non-secret immutable
+The server resolves both requested GHCR digests before changing application
+state. It first checks the config-derived cache tag, otherwise pulls the verified
+single linux/amd64 child manifest. The requested CI index digest is retained in
+the release record; provenance entries are not runtime images. If the daemon's network/proxy route fails,
+it uses the preinstalled Skopeo binary in a userspace environment without inherited
+proxy variables. That path verifies the exact OCI index/manifest hashes, selects
+one linux/amd64 image, copies the pinned image through a private temporary Docker
+archive and loads it. This does not build images or change/restart Docker/Clash.
+
+All acquisition paths, including an administrator-preloaded image, verify the
+remote digest chain and the image's raw config. The server streams `docker image
+save` by its inspected immutable ID, reads only bounded metadata, follows the
+archive manifest's config reference, checks its SHA-256 against the requested
+registry manifest, and compares config `rootfs.diff_ids` with Docker inspection.
+It verifies OCI source/revision labels, GIT_SHA and platform in both the raw
+config and inspection. This supports classic Docker config IDs and newer
+containerd-backed Docker manifest IDs without assuming either archive path layout.
+
+Only then does the server run migrations, install mode-600 runtime configuration,
+and start Compose without building or pulling. Runtime/migration/rollback commands
+use the actual verified immutable engine image ID; `release.json` retains both
+requested registry digests and actual image IDs, and `.env` stores the runtime
+IDs for reboot recovery. Fixed `ielts-local` tags are derived from the remotely
+verified config digest, identify loaded or preloaded images, and retain validated
+images when other platform releases prune dangling images. An existing cache tag
+is revalidated against the remote manifest, raw config and rootfs before reuse.
+API/Web health must match the
+same commit SHA. A successful release saves non-secret immutable
 image pointers for host reboot recovery. Failed startup restores the previous
 configuration/images when available; schema rollback is not automatic and
 requires a reviewed, backward-compatible migration strategy.

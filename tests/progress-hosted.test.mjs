@@ -281,6 +281,46 @@ test("receiving a server snapshot does not re-upload it as local changes", async
   assert.equal(env.revisions.drafts.essay, 4);
 });
 
+test("reading unchanged hosted progress preserves the React external-store snapshot", async () => {
+  const env = environment(),
+    a = env.device();
+  a.api.configureProgressIdentity("owner");
+  await a.api.hydrateProgress("archive");
+  const initial = a.api.useProgress();
+  for (let read = 0; read < 3; read++) {
+    a.api.getProgress();
+    assert.equal(a.api.useProgress(), initial);
+  }
+  env.setOffline(true);
+  a.api.saveDraft("essay", { text: "Original pending draft" });
+  const pending = a.api.useProgress();
+  for (let read = 0; read < 3; read++) {
+    assert.equal(
+      a.api.getProgress().drafts.essay.text,
+      "Original pending draft",
+    );
+    assert.equal(a.api.useProgress(), pending);
+  }
+});
+
+test("an equal-time browser cache with changed values still updates the hosted snapshot", async () => {
+  const env = environment(),
+    a = env.device();
+  a.api.configureProgressIdentity("owner");
+  await a.api.hydrateProgress("archive");
+  const initial = a.api.useProgress();
+  const key = "ielts-lab-progress-v2-owner-archive";
+  const cached = JSON.parse(a.storage.get(key));
+  cached.notes.reading = "Original note from another browser tab";
+  a.storage.set(key, JSON.stringify(cached));
+  assert.equal(a.api.getProgress().notes.reading, cached.notes.reading);
+  const changed = a.api.useProgress();
+  assert.notEqual(changed, initial);
+  assert.equal(changed.updatedAt, initial.updatedAt);
+  a.api.getProgress();
+  assert.equal(a.api.useProgress(), changed);
+});
+
 test("logout does not reload the previous owner cache before a new session hydrates", async () => {
   const env = environment(),
     a = env.device();

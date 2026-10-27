@@ -271,6 +271,7 @@ function pendingLeaves() {
 function refreshBrowser() {
   if (!cacheEnabled) return;
   try {
+    let next = state;
     const p = readCache();
     const browserTime = Date.parse(p?.updatedAt || "") || 0;
     const stateTime = Date.parse(state.updatedAt || "") || 0;
@@ -279,11 +280,15 @@ function refreshBrowser() {
       (browserTime > stateTime || (hosted && browserTime === stateTime))
     ) {
       if (browserTime > stateTime) mutationGeneration++;
-      state = progressOnly(p);
+      next = progressOnly(p);
       if (hosted) revisions = p.__sync?.revisions || revisions;
       else dirty = false;
     }
-    if (hosted) state = overlay(state);
+    if (hosted) next = overlay(next);
+    // Render-time readers also reconcile pending browser work. Keep the external
+    // store snapshot stable when that reconciliation changes no values; replacing
+    // it on every read makes React retry any review that reads its saved draft.
+    if (JSON.stringify(next) !== JSON.stringify(state)) state = next;
   } catch {
     /* keep last valid state */
   }
