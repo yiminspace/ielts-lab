@@ -14,6 +14,25 @@ folder. Keep an off-host encrypted copy. The shared platform's database snapshot
 mechanism may discover the new database, but this must be verified; it does not
 prove that the IELTS file directories are covered.
 
+## Installed platform backup chain
+
+Production uses the shared platform's version-3 daily snapshots and existing
+server-to-Mac pull schedule. Each snapshot pairs the fresh `ielts_db` dump with
+recording files, their database references, private runtime configuration and
+the release manifest. Backup and release use the same maintenance lock. The
+backup briefly stops `ielts-api` for a consistent file/database cut, with a
+60-second watchdog; it then checks the API and Web versions agree.
+
+The immutable archive is backed up separately once and referenced by checksum;
+it is not recopied into every daily snapshot. Keep that separate archive and the
+dedicated age recovery key available when rehearsing a complete recovery.
+
+The Mac pull verifies the snapshot manifest and files before publishing the local
+copy. Its isolated PostgreSQL restore drill also checks that saved recording
+metadata points to restored files. The destination storage must be encrypted;
+private file permissions alone do not provide encryption. The standalone tools
+below remain available for an independent full archive snapshot or rehearsal.
+
 ## Consistent snapshot
 
 Run `deploy/backup.py` from a trusted administration checkout on the server. It
