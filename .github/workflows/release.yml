@@ -1,0 +1,92 @@
+name: Release IELTS
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ielts-production
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/check.yml
+    permissions:
+      contents: read
+  build:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      api_digest: ${{ steps.api.outputs.digest }}
+      web_digest: ${{ steps.web.outputs.digest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build API
+        id: api
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: deploy/api.Dockerfile
+          push: true
+          tags: ghcr.io/yiminspace/ielts-api:sha-${{ github.sha }}
+          build-args: GIT_SHA=${{ github.sha }}
+          platforms: linux/amd64
+          cache-from: type=gha,scope=ielts-api
+          cache-to: type=gha,scope=ielts-api,mode=max
+      - name: Build Web
+        id: web
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: deploy/web.Dockerfile
+          push: true
+          tags: ghcr.io/yiminspace/ielts-web:sha-${{ github.sha }}
+          build-args: GIT_SHA=${{ github.sha }}
+          platforms: linux/amd64
+          cache-from: type=gha,scope=ielts-web
+          cache-to: type=gha,scope=ielts-web,mode=max
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+    env:
+      API_DIGEST: ${{ needs.build.outputs.api_digest }}
+      WEB_DIGEST: ${{ needs.build.outputs.web_digest }}
+      RELEASE_SHA: ${{ github.sha }}
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install pinned SOPS
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            https://github.com/getsops/sops/releases/download/v3.13.1/sops-v3.13.1.linux.amd64 \
+            -o "$RUNNER_TEMP/sops"
+          printf '%s  %s\n' '620a9d7e3352ababeca6908cea24a6e8b14ce89a448ddbd3f94f1ef3398f470a' "$RUNNER_TEMP/sops" | sha256sum --check --status
+          chmod 700 "$RUNNER_TEMP/sops"
+      - name: Decrypt and deploy fixed release
+        env:
+          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: bash deploy/deploy-ci.sh
+      - name: Clear deployment material
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/ielts-release" "$RUNNER_TEMP/sops"

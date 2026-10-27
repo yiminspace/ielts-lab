@@ -46,7 +46,7 @@ test(
     const port = await freePort();
     let apiPort = await freePort();
     while (apiPort === port) apiPort = await freePort();
-    const child = spawn(process.execPath, ["server/dev.mjs", "--demo"], {
+    const child = spawn(process.execPath, ["scripts/dev.mjs", "--demo"], {
       cwd: root,
       env: { ...process.env, PORT: String(port), API_PORT: String(apiPort) },
       stdio: ["ignore", "pipe", "pipe"],

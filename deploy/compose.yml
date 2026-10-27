@@ -1,0 +1,52 @@
+name: ielts-lab
+services:
+  ielts-api:
+    image: ${IELTS_API_IMAGE:?Set an immutable API image reference}
+    container_name: ielts-api
+    restart: unless-stopped
+    env_file: runtime.env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "4318"
+      ARCHIVE_ROOT: /data/archive
+      RECORDINGS_ROOT: /data/recordings
+    volumes:
+      - type: bind
+        source: ./data/archive
+        target: /data/archive
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data/recordings
+        target: /data/recordings
+        bind:
+          create_host_path: false
+    networks: [web-proxy]
+    read_only: true
+    tmpfs: [/tmp:size=16m,noexec,nosuid]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:4318/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+  ielts-web:
+    image: ${IELTS_WEB_IMAGE:?Set an immutable Web image reference}
+    container_name: ielts-web
+    restart: unless-stopped
+    environment:
+      HOST: 0.0.0.0
+      PORT: "4317"
+    networks: [web-proxy]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 96m
+networks:
+  web-proxy:
+    external: true

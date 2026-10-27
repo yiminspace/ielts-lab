@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classifyTestTrack, matchesTestTrack } from "../src/lib/test-track.mjs";
+import { classifyTestTrack, matchesTestTrack } from "../apps/web/src/lib/test-track.mjs";
 
 test("explicit track metadata and category labels identify A/G without guessing from Cambridge", () => {
   assert.equal(

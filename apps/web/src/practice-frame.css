@@ -1,0 +1,262 @@
+
+.practice-frame .pf-header {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 22px;
+  min-height: 76px;
+  border-bottom: 1px solid var(--ct-line);
+  flex-shrink: 0;
+}
+.practice-frame .pf-header .pf-back {
+  padding: 6px;
+  border: 0;
+}
+.practice-frame .pf-brand {
+  font-size: 21px;
+  color: var(--vg-color-success);
+  white-space: nowrap;
+}
+.practice-frame.ct-contrast-white-black .pf-brand {
+  color: var(--ct-fg);
+}
+.practice-frame.ct-contrast-yellow-black .pf-brand {
+  color: var(--ct-fg);
+}
+.practice-frame .pf-identity {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+.practice-frame .pf-identity strong {
+  font-size: 16px;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.practice-frame .pf-identity span {
+  color: var(--ct-muted);
+  font-size: 12px;
+}
+.practice-frame .pf-status,
+.practice-frame .pf-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.practice-frame .pf-status {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.practice-frame .pf-header-actions button {
+  border: 0;
+  font-size: 14px;
+  padding: 5px;
+}
+.practice-frame .pf-instruction {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  background: var(--ct-panel);
+  padding: 10px 24px;
+  min-height: 62px;
+  flex-shrink: 0;
+}
+.practice-frame .pf-instruction > div:first-child {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+.practice-frame .pf-instruction p {
+  margin: 0;
+  font-size: 14px;
+}
+.practice-frame .pf-mode {
+  margin-left: auto;
+  color: var(--ct-muted);
+  font-size: 13px;
+}
+.practice-frame .pf-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.practice-frame .pf-actions button {
+  font-size: 14px;
+}
+.practice-frame .pf-tools {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--ct-line);
+}
+.practice-frame .pf-workarea {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.practice-frame .pf-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.practice-frame .pf-footer {
+  flex-shrink: 0;
+  border-top: 1px solid var(--ct-line);
+  background: var(--ct-bg);
+}
+.practice-frame .pf-notes {
+  flex: 0 0 290px;
+  display: flex;
+  flex-direction: column;
+  padding: 18px;
+  border-left: 1px solid var(--ct-line);
+  background: var(--ct-bg);
+  gap: 12px;
+  min-height: 0;
+}
+.practice-frame .pf-notes > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.practice-frame .pf-notes p {
+  font-size: 13px;
+  color: var(--ct-muted);
+  margin: 0;
+}
+.practice-frame .pf-notes textarea {
+  width: 100%;
+  flex: 1;
+  min-height: 80px;
+  resize: none;
+  padding: 10px;
+  background: var(--ct-bg);
+  color: var(--ct-fg);
+}
+.practice-frame .pf-save-message {
+  background: var(--ct-panel);
+  color: var(--ct-fg);
+  border-bottom: 1px solid var(--ct-line);
+  padding: 8px 22px;
+  font-size: 14px;
+}
+.practice-frame .pf-options {
+  width: min(430px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 22px;
+  border: 1px solid var(--ct-line);
+  border-radius: 2px;
+  color: var(--ct-fg);
+  background: var(--ct-bg);
+}
+.practice-frame .pf-options::backdrop {
+  background: var(--vg-color-overlay);
+}
+.practice-frame .pf-dialog-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  gap: 20px;
+}
+.practice-frame .pf-dialog-heading h2 {
+  font-size: 21px;
+  margin: 0;
+}
+.practice-frame .pf-options label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.practice-frame .pf-options select {
+  width: 100%;
+  padding: 8px;
+  color: var(--ct-fg);
+  background: var(--ct-bg);
+}
+.practice-frame .pf-menu-action {
+  display: flex;
+  width: 100%;
+  margin-top: 10px;
+  justify-content: flex-start;
+}
+@media (max-width: 800px) {
+  .practice-frame .pf-header {
+    padding: 10px 14px;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .practice-frame .pf-brand {
+    font-size: 18px;
+  }
+  .practice-frame .pf-identity {
+    min-width: 160px;
+  }
+  .practice-frame .pf-status {
+    margin-left: auto;
+  }
+  .practice-frame .pf-header-actions {
+    gap: 7px;
+  }
+  .practice-frame .pf-header-actions button span {
+    display: none;
+  }
+  .practice-frame .pf-notes {
+    flex-basis: 240px;
+  }
+  .practice-frame .pf-instruction {
+    padding: 10px 14px;
+  }
+}
+@media (max-width: 560px) {
+  .practice-frame .pf-header {
+    min-height: 68px;
+  }
+  .practice-frame .pf-brand {
+    display: none;
+  }
+  .practice-frame .pf-identity {
+    min-width: 150px;
+  }
+  .practice-frame .pf-status {
+    font-size: 12px;
+    gap: 8px;
+  }
+  .practice-frame .pf-instruction {
+    gap: 8px;
+    min-height: 55px;
+  }
+  .practice-frame .pf-mode {
+    margin-left: 0;
+  }
+  .practice-frame .pf-actions {
+    margin-left: auto;
+  }
+  .practice-frame .pf-workarea {
+    position: relative;
+  }
+  .practice-frame .pf-notes {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    border-left: 0;
+  }
+}
+@media (pointer: coarse) {
+  .practice-frame .pf-header button,
+  .practice-frame .pf-actions button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

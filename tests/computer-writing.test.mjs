@@ -6,7 +6,7 @@ import {
   writingDraftRevision,
   writingRevisionMatches,
   writingCanRecord,
-} from "../src/lib/computer-writing.mjs";
+} from "../apps/web/src/lib/computer-writing.mjs";
 
 test("a writing deadline survives backgrounding and reload without extending the time", () => {
   const startedAt = 100000;

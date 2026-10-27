@@ -4,10 +4,10 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import http from "node:http";
-import { createApp, parseRange, validProgress } from "../server/index.mjs";
-import { loadLibrary, validateArchive } from "../server/library.mjs";
-import { generalTrainingItems } from "../server/general-training.mjs";
-import { importSummary } from "../server/import.mjs";
+import { createApp, parseRange, validProgress } from "../services/api/index.mjs";
+import { loadLibrary, validateArchive } from "../services/api/library.mjs";
+import { generalTrainingItems } from "../services/api/general-training.mjs";
+import { importSummary } from "../services/api/import.mjs";
 
 async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "ielts-lab-test-"));

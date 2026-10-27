@@ -6,7 +6,7 @@ import {
   buildGroups,
   gradeGroups,
   parseTranscript,
-} from "../src/lib/questions.mjs";
+} from "../apps/web/src/lib/questions.mjs";
 const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const supplied = process.argv[2];
 let archiveRoot = supplied;

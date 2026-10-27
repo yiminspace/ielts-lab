@@ -14,5 +14,5 @@
     "noEmit": true,
     "isolatedModules": true
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["apps/web/src", "vite.config.ts"]
 }

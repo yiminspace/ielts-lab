@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { generalTrainingItems } from "../server/general-training.mjs";
+import { generalTrainingItems } from "../services/api/general-training.mjs";
 import {
   answerQuotes,
   buildGroups,
   gradeGroups,
   normalizeAnswer,
-} from "../src/lib/questions.mjs";
+} from "../apps/web/src/lib/questions.mjs";
 
 const readings = generalTrainingItems.filter((item) => item.kind === "reading");
 const writings = generalTrainingItems.filter((item) => item.kind === "writing");

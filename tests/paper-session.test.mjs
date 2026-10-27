@@ -5,7 +5,7 @@ import {
   restorePaperRun,
   advancePaperRun,
   totalPracticeSeconds,
-} from "../src/lib/paper-session.mjs";
+} from "../apps/web/src/lib/paper-session.mjs";
 const paper = {
   id: "p",
   ready: true,
