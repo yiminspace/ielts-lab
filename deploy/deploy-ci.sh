@@ -18,5 +18,6 @@ printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$stage/known_hosts"
 python3 deploy/validate-env.py "$stage/runtime.env" "$stage/migration.env"
 tar -C "$stage" -cf - runtime.env migration.env |
   ssh -T -i "$stage/ssh.key" -o BatchMode=yes -o IdentitiesOnly=yes \
+    -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
     -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$stage/known_hosts" \
     "$DEPLOY_USER@$DEPLOY_HOST" "ielts-release $API_DIGEST $WEB_DIGEST $RELEASE_SHA"

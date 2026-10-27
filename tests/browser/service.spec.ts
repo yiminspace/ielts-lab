@@ -110,6 +110,92 @@ test("expired cookies recover without remounting or losing the active writing dr
   await expect(page.getByText("自己的节奏，扎实地练习。")).toHaveCount(0);
 });
 
+for (const kind of ["listening", "reading"] as const)
+  test(`saved ${kind} reviews remain readable after a session renewal without changing progress`, async ({
+    page,
+    context,
+  }) => {
+    test.skip(!fixture.hosted, "Requires real hosted API/PostgreSQL fixture.");
+    await ownerContext(context);
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.goto("/");
+    await expect(page.getByText("自己的节奏，扎实地练习。")).toBeVisible();
+    const attemptId = await page.evaluate(async (kind) => {
+      const id = crypto.randomUUID();
+      const response = await fetch("/api/attempts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id,
+          itemId: `demo-${kind}`,
+          title: `Original ${kind} review fixture`,
+          kind,
+          createdAt: new Date().toISOString(),
+          answers: {},
+          durationSeconds: 7,
+          score: 0,
+          total: 4,
+        }),
+      });
+      if (!response.ok)
+        throw new Error("Could not create the original review fixture");
+      return id;
+    }, kind);
+    await page.reload();
+    await page.getByRole("link", { name: "练习记录", exact: true }).click();
+    const row = page
+      .locator(".history-row")
+      .filter({ hasText: `Original ${kind} review fixture` });
+    await expect(row).toBeVisible();
+    const before = await page.evaluate(async () =>
+      (await fetch("/api/progress")).json(),
+    );
+    // An API restart also invalidates these opaque cookies. Renew using the
+    // synthetic AuthKit identity while keeping the existing browser state.
+    await context.clearCookies();
+    await row.getByRole("button", { name: "查看复盘", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`review=${attemptId}$`));
+    await expect(
+      page.getByText("Review · 作答复盘", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "重新作答", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "交卷检查", exact: true }),
+    ).toHaveCount(0);
+    await page.reload();
+    await expect(
+      page.getByText("Review · 作答复盘", { exact: true }),
+    ).toBeVisible();
+    if (kind === "listening") {
+      const audio = page.locator('audio[aria-label="听力录音"]');
+      const source = await audio.getAttribute("src");
+      expect(source).toBeTruthy();
+      const response = await context.request.get(
+        new URL(source!, fixture.origin).href,
+        {
+          headers: { Range: "bytes=0-7" },
+        },
+      );
+      expect(response.status()).toBe(206);
+      expect(response.headers()["content-range"]).toMatch(/^bytes 0-7\//);
+      await audio.evaluate((element: HTMLAudioElement) => element.play());
+      await expect
+        .poll(() =>
+          audio.evaluate((element: HTMLAudioElement) => element.currentTime),
+        )
+        .toBeGreaterThan(0);
+      await audio.evaluate((element: HTMLAudioElement) => element.pause());
+    }
+    const after = await page.evaluate(async () =>
+      (await fetch("/api/progress")).json(),
+    );
+    expect(after).toEqual(before);
+    expect(errors).toEqual([]);
+  });
+
 test("failed uploads survive reload; another device can play, download and delete the saved recording", async ({
   browser,
 }) => {

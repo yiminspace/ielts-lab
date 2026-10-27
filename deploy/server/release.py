@@ -14,16 +14,237 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import time
 
 BASE = Path('/srv/ielts-lab')
 DIGEST = re.compile(r'^sha256:[0-9a-f]{64}$')
 
-def run(args, **kwargs):
+def command_environment():
     # Do not forward arbitrary SSH client environment to privileged subprocesses.
-    env = {'PATH':'/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'HOME':'/root'}
+    return {'PATH':'/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'HOME':'/root'}
+
+
+def run(args, **kwargs):
+    env = command_environment()
     env.update(kwargs.pop('env', {}))
     return subprocess.run(args, check=True, env=env, **kwargs)
+
+
+REPOSITORIES = {
+    'api': 'ghcr.io/yiminspace/ielts-api',
+    'web': 'ghcr.io/yiminspace/ielts-web',
+}
+SOURCE_LABEL = 'https://github.com/yiminspace/ielts-lab'
+
+
+def inspect_image(reference):
+    result = run(['docker', 'image', 'inspect', reference], stdout=subprocess.PIPE,
+                 stderr=subprocess.PIPE, timeout=30)
+    images = json.loads(result.stdout)
+    if not isinstance(images, list) or len(images) != 1:
+        raise ValueError('Image inspection failed')
+    return images[0]
+
+
+def validate_image(image, sha, *, expected_id=None, requested_ref=None):
+    image_id = image.get('Id')
+    config = image.get('Config') or {}
+    labels = config.get('Labels') or {}
+    revisions = [value[8:] for value in config.get('Env', []) if value.startswith('GIT_SHA=')]
+    if (not isinstance(image_id, str) or not DIGEST.fullmatch(image_id) or
+            (expected_id is not None and image_id != expected_id) or
+            image.get('Os') != 'linux' or image.get('Architecture') != 'amd64' or
+            labels.get('org.opencontainers.image.source') != SOURCE_LABEL or
+            labels.get('org.opencontainers.image.revision') != sha or revisions != [sha]):
+        raise ValueError('Image identity, platform or release metadata does not match')
+    if requested_ref is not None and requested_ref not in image.get('RepoDigests', []):
+        raise ValueError('Docker did not retain the requested registry digest')
+    return image_id
+
+
+def read_saved_config(stream, expected_config):
+    """Read bounded metadata from a Docker save stream without extracting layers.
+
+    The Docker archive manifest supplies the config path. Its naming differs
+    between classic and containerd image stores, so never infer it from image ID.
+    """
+    if not isinstance(expected_config, str) or not DIGEST.fullmatch(expected_config):
+        raise ValueError('Expected image config digest is invalid')
+    manifest = None
+    manifest_seen = False
+    matching = []
+    with tarfile.open(fileobj=stream, mode='r|') as archive:
+        for member in archive:
+            if member.name == 'manifest.json':
+                if manifest_seen or not member.isfile():
+                    raise ValueError('Docker archive manifest is ambiguous or invalid')
+                manifest_seen = True
+            if not member.isfile() or member.size > 2 * 1024 * 1024:
+                if member.name == 'manifest.json':
+                    raise ValueError('Docker archive manifest exceeds its limit')
+                continue
+            # Only bounded metadata is read into memory; layer tar members stream
+            # past without extraction or buffering the full image archive.
+            raw = archive.extractfile(member).read()
+            if member.name == 'manifest.json':
+                manifest = json.loads(raw)
+            if 'sha256:' + hashlib.sha256(raw).hexdigest() == expected_config:
+                matching.append((member.name, raw))
+                if len(matching) > 1:
+                    raise ValueError('Docker archive config is ambiguous')
+    if (not isinstance(manifest, list) or len(manifest) != 1 or
+            not isinstance(manifest[0], dict) or len(matching) != 1 or
+            manifest[0].get('Config') != matching[0][0]):
+        raise ValueError('Saved image config digest does not match the requested manifest')
+    config = json.loads(matching[0][1])
+    if not isinstance(config, dict):
+        raise ValueError('Saved image config is invalid')
+    return config
+
+
+def verify_saved_image(image, sha, expected_config):
+    """Bind an engine's immutable ID to the remotely verified raw config."""
+    image_id = validate_image(image, sha)
+    # Docker 29's containerd store can report a manifest ID where older engines
+    # report the config ID. Export by actual immutable ID and hash the raw config.
+    process = subprocess.Popen(['docker', 'image', 'save', image_id],
+                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                               env=command_environment())
+    timer = threading.Timer(180, process.kill)
+    timer.daemon = True
+    timer.start()
+    try:
+        saved = read_saved_config(process.stdout, expected_config)
+        if process.wait(timeout=15) != 0:
+            raise ValueError('Docker image export failed')
+    finally:
+        timer.cancel()
+        process.stdout.close()
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+    rootfs = saved.get('rootfs') or {}
+    observed = image.get('RootFS') or {}
+    layers = rootfs.get('diff_ids')
+    if (rootfs.get('type') != 'layers' or observed.get('Type') != 'layers' or
+            not isinstance(layers, list) or
+            not all(isinstance(value, str) and DIGEST.fullmatch(value) for value in layers) or
+            layers != observed.get('Layers')):
+        raise ValueError('Saved image rootfs does not match the inspected image')
+    # Metadata must agree in both the raw, digest-verified config and inspection.
+    validate_image({'Id': image_id, 'Os': saved.get('os'),
+                    'Architecture': saved.get('architecture'),
+                    'Config': saved.get('config')}, sha)
+    return image_id
+
+
+def read_source_manifest(repository, digest):
+    if repository not in REPOSITORIES.values() or not DIGEST.fullmatch(digest):
+        raise ValueError('Image source is not allowed')
+    # run() constructs a minimal environment without inherited HTTP(S)/ALL_PROXY.
+    result = run(['skopeo', 'inspect', '--raw', f'docker://{repository}@{digest}'],
+                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=45)
+    raw = result.stdout
+    if (len(raw) > 2 * 1024 * 1024 or
+            'sha256:' + hashlib.sha256(raw).hexdigest() != digest):
+        raise ValueError('Registry manifest digest does not match the requested digest')
+    manifest = json.loads(raw)
+    if not isinstance(manifest, dict) or manifest.get('schemaVersion') != 2:
+        raise ValueError('Unsupported image manifest')
+    return manifest
+
+
+def resolve_source(repository, digest):
+    manifest = read_source_manifest(repository, digest)
+    selected_digest = digest
+    if 'manifests' in manifest:
+        entries = manifest['manifests']
+        if not isinstance(entries, list):
+            raise ValueError('Invalid image index')
+        # Buildx may add unknown/unknown provenance entries; never select those.
+        candidates = [entry for entry in entries if isinstance(entry, dict) and
+                      entry.get('platform', {}).get('os') == 'linux' and
+                      entry.get('platform', {}).get('architecture') == 'amd64' and
+                      entry.get('platform', {}).get('variant') in (None, '')]
+        if len(candidates) != 1 or not DIGEST.fullmatch(candidates[0].get('digest', '')):
+            raise ValueError('Image index must contain one Linux amd64 image')
+        selected_digest = candidates[0]['digest']
+        manifest = read_source_manifest(repository, selected_digest)
+        if 'manifests' in manifest:
+            raise ValueError('Nested image indexes are not supported')
+    config_digest = manifest.get('config', {}).get('digest')
+    if not isinstance(config_digest, str) or not DIGEST.fullmatch(config_digest):
+        raise ValueError('Image manifest has no valid config digest')
+    return selected_digest, config_digest
+
+
+def prepare_image(role, requested_digest, sha, stage):
+    if role not in REPOSITORIES or not DIGEST.fullmatch(requested_digest):
+        raise ValueError('Image source is not allowed')
+    repository = REPOSITORIES[role]
+    requested_ref = f'{repository}@{requested_digest}'
+    selected_digest, expected_config = resolve_source(repository, requested_digest)
+    selected_ref = f'{repository}@{selected_digest}'
+    local_tag = f'ielts-local/ielts-{role}:sha256-{expected_config[7:]}'
+    try:
+        cached = inspect_image(local_tag)
+    except subprocess.CalledProcessError:
+        cached = None
+    if cached is None:
+        try:
+            run(['docker', 'pull', '--platform', 'linux/amd64', selected_ref],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=90)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            # Userspace copy bypasses a broken daemon proxy without changing it.
+            with tempfile.TemporaryDirectory(prefix=role + '-image-', dir=stage) as temporary:
+                directory = Path(temporary)
+                os.chmod(directory, 0o700)
+                archive = directory / 'image.tar'
+                run(['skopeo', '--override-os', 'linux', '--override-arch', 'amd64', 'copy',
+                     '--retry-times', '2', f'docker://{repository}@{selected_digest}',
+                     f'docker-archive:{archive}:{local_tag}'], stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE, timeout=1200)
+                os.chmod(archive, 0o600)
+                run(['docker', 'load', '--input', str(archive)], stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE, timeout=180)
+            cached = inspect_image(local_tag)
+        else:
+            cached = inspect_image(selected_ref)
+            validate_image(cached, sha, requested_ref=selected_ref)
+    # Cached/preloaded and freshly loaded images need the same remote digest
+    # chain, raw config, rootfs and release metadata, regardless of engine layout.
+    image_id = verify_saved_image(cached, sha, expected_config)
+    # Shared platform deploys prune dangling images. Keep a fixed local tag so a
+    # just-replaced release remains available for rollback; execution still uses ID.
+    run(['docker', 'tag', image_id, local_tag], stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, timeout=30)
+    return {'requested': requested_ref, 'imageId': image_id}
+
+
+def rollback_images(previous):
+    sha = previous.get('version')
+    if not isinstance(sha, str) or not re.fullmatch(r'[0-9a-f]{40}', sha):
+        raise ValueError('Previous release version is invalid')
+    images = {}
+    for role, repository in REPOSITORIES.items():
+        requested = previous.get(role)
+        prefix = repository + '@'
+        if (not isinstance(requested, str) or not requested.startswith(prefix) or
+                not DIGEST.fullmatch(requested[len(prefix):])):
+            raise ValueError('Previous release source is not allowed')
+        image_id = previous.get(role + 'ImageId')
+        if image_id is not None:
+            if not isinstance(image_id, str) or not DIGEST.fullmatch(image_id):
+                raise ValueError('Previous release image identity is invalid')
+            images['IELTS_' + role.upper() + '_IMAGE'] = validate_image(
+                inspect_image(image_id), sha, expected_id=image_id)
+        else:
+            # Existing pre-fallback manifests retain only a pinned registry ref.
+            images['IELTS_' + role.upper() + '_IMAGE'] = validate_image(
+                inspect_image(requested), sha, requested_ref=requested)
+    return images
+
 
 def write_private(path, data):
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -53,11 +274,11 @@ def main():
             spec = importlib.util.spec_from_file_location('ielts_validate', '/usr/local/lib/ielts-lab/validate-env.py')
             module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
             module.validate(module.read_env(stage/'runtime.env'), module.read_env(stage/'migration.env'))
-            api_image = f'ghcr.io/yiminspace/ielts-api@{api}'
-            web_image = f'ghcr.io/yiminspace/ielts-web@{web}'
-            # Public immutable GHCR images need no registry credentials in the application.
-            run(['docker','pull',api_image]); run(['docker','pull',web_image])
-            run(['docker','run','--rm','--network','web-proxy','--env-file',str(stage/'migration.env'),
+            api_artifact = prepare_image('api', api, sha, stage)
+            web_artifact = prepare_image('web', web, sha, stage)
+            api_image = api_artifact['imageId']
+            web_image = web_artifact['imageId']
+            run(['docker','run','--rm','--pull','never','--network','web-proxy','--env-file',str(stage/'migration.env'),
                  '--read-only','--cap-drop','ALL','--security-opt','no-new-privileges:true',api_image,
                  'node','services/api/scripts/migrate.mjs','up'])
             previous = BASE/'runtime.env'
@@ -68,7 +289,7 @@ def main():
             images = {'IELTS_API_IMAGE':api_image,'IELTS_WEB_IMAGE':web_image}
             compose = ['docker','compose','-f',str(BASE/'compose.yml')]
             try:
-                run([*compose,'up','-d','--no-build','--wait','--wait-timeout','120'],env=images)
+                run([*compose,'up','-d','--no-build','--pull','never','--wait','--wait-timeout','120'],env=images)
                 for container, port in [('ielts-api',4318),('ielts-web',4317)]:
                     script = f"fetch('http://127.0.0.1:{port}/health').then(async r=>{{const b=await r.json();if(!r.ok||b.version!==process.argv[1])process.exit(1)}}).catch(()=>process.exit(1))"
                     run(['docker','exec',container,'node','-e',script,sha])
@@ -78,15 +299,15 @@ def main():
                     # Application rollback assumes the migration remains backward compatible.
                     if (BASE/'release.json').is_file():
                         old = json.loads((BASE/'release.json').read_text())
-                        for key, prefix in [('api','ghcr.io/yiminspace/ielts-api@'),('web','ghcr.io/yiminspace/ielts-web@')]:
-                            if not str(old.get(key,'')).startswith(prefix) or not DIGEST.fullmatch(old[key][len(prefix):]): raise ValueError('Invalid previous release')
-                        run([*compose,'up','-d','--no-build','--wait','--wait-timeout','120'],env={'IELTS_API_IMAGE':old['api'],'IELTS_WEB_IMAGE':old['web']})
+                        restored_images = rollback_images(old)
+                        run([*compose,'up','-d','--no-build','--pull','never','--wait','--wait-timeout','120'],env=restored_images)
                 raise
             # Fixed image pointers permit restart after host reboot without access to CI.
             image_file = BASE/'.env'
             content = ''.join(f'{key}={value}\n' for key,value in images.items()).encode()
             write_private(stage/'images.env',content); os.replace(stage/'images.env',image_file)
-            manifest = {'version':sha,'api':api_image,'web':web_image,'deployedAt':int(time.time())}
+            manifest = {'version':sha,'api':api_artifact['requested'],'web':web_artifact['requested'],
+                        'apiImageId':api_image,'webImageId':web_image,'deployedAt':int(time.time())}
             write_private(stage/'release.json',(json.dumps(manifest)+'\n').encode());os.replace(stage/'release.json',BASE/'release.json')
             print(f'IELTS release verified: {sha}')
 
