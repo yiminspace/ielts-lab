@@ -109,18 +109,25 @@ def prepare_image(role, requested_digest, sha, stage):
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         # Userspace copy bypasses a broken daemon proxy without changing it.
         selected_digest, expected_id = resolve_source(repository, requested_digest)
-        with tempfile.TemporaryDirectory(prefix=role + '-image-', dir=stage) as temporary:
-            directory = Path(temporary)
-            os.chmod(directory, 0o700)
-            archive = directory / 'image.tar'
-            run(['skopeo', '--override-os', 'linux', '--override-arch', 'amd64', 'copy',
-                 '--retry-times', '2', f'docker://{repository}@{selected_digest}',
-                 f'docker-archive:{archive}'], stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE, timeout=1200)
-            os.chmod(archive, 0o600)
-            run(['docker', 'load', '--input', str(archive)], stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE, timeout=180)
-        image_id = validate_image(inspect_image(expected_id), sha, expected_id=expected_id)
+        try:
+            cached = inspect_image(expected_id)
+        except subprocess.CalledProcessError:
+            cached = None
+        if cached is None:
+            with tempfile.TemporaryDirectory(prefix=role + '-image-', dir=stage) as temporary:
+                directory = Path(temporary)
+                os.chmod(directory, 0o700)
+                archive = directory / 'image.tar'
+                run(['skopeo', '--override-os', 'linux', '--override-arch', 'amd64', 'copy',
+                     '--retry-times', '2', f'docker://{repository}@{selected_digest}',
+                     f'docker-archive:{archive}'], stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE, timeout=1200)
+                os.chmod(archive, 0o600)
+                run(['docker', 'load', '--input', str(archive)], stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE, timeout=180)
+            cached = inspect_image(expected_id)
+        # Cached/preloaded images need the same remote digest chain and metadata.
+        image_id = validate_image(cached, sha, expected_id=expected_id)
     else:
         image_id = validate_image(inspect_image(requested_ref), sha, requested_ref=requested_ref)
     # Shared platform deploys prune dangling images. Keep a fixed local tag so a

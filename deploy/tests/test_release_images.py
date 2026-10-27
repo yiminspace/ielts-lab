@@ -62,6 +62,7 @@ class ImageAcquisitionTests(unittest.TestCase):
         self.index_digest = digest(self.index)
         self.manifests = {self.index_digest: self.index, self.leaf_digest: self.leaf}
         self.observed = image()
+        self.loaded = False
 
     def fallback_command(self, args, **kwargs):
         self.calls.append((args, kwargs))
@@ -76,8 +77,11 @@ class ImageAcquisitionTests(unittest.TestCase):
             archive.write_bytes(b'original fake image archive')
         if args[:2] == ['docker', 'load']:
             self.assertEqual(Path(args[-1]).stat().st_mode & 0o777, 0o600)
+            self.loaded = True
         if args[:3] == ['docker', 'image', 'inspect']:
             self.assertEqual(args[-1], API_ID)
+            if not self.loaded:
+                raise subprocess.CalledProcessError(1, args, stderr=b'No such image')
             return subprocess.CompletedProcess(args, 0, stdout=encoded([self.observed]))
         return subprocess.CompletedProcess(args, 0, stdout=b'')
 
@@ -90,6 +94,17 @@ class ImageAcquisitionTests(unittest.TestCase):
         self.assertNotIn('docker://' + release.REPOSITORIES['api'] + '@sha256:' + 'f' * 64, copy_call)
         self.assertEqual(list(self.stage.iterdir()), [])
         self.assertTrue(any(args == ['docker','tag',API_ID,'ielts-local/ielts-api:sha256-'+API_ID[7:]] for args,_ in self.calls))
+
+    def test_verified_cached_image_avoids_copy_but_still_checks_remote_digest_and_metadata(self):
+        self.loaded = True
+        with mock.patch.object(release, 'run', side_effect=self.fallback_command):
+            self.assertEqual(release.prepare_image('api', self.index_digest, SHA, self.stage)['imageId'], API_ID)
+        self.assertFalse(any('copy' in args or args[:2] == ['docker', 'load'] for args, _ in self.calls))
+        self.assertEqual(sum(args[:3] == ['skopeo', 'inspect', '--raw'] for args, _ in self.calls), 2)
+        self.observed['Config']['Labels']['org.opencontainers.image.revision'] = OLD_SHA
+        with mock.patch.object(release, 'run', side_effect=self.fallback_command):
+            with self.assertRaisesRegex(ValueError, 'identity, platform or release metadata'):
+                release.prepare_image('api', self.index_digest, SHA, self.stage)
 
     def test_corrupt_requested_index_aborts_before_copy_or_load(self):
         self.manifests[self.index_digest] += b' '
