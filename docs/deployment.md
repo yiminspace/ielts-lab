@@ -95,6 +95,7 @@ and image isolation checks. It then publishes `sha-<commit>` tags and deploys
 using exact `sha256` digests. The build jobs never receive production secrets.
 The protected deployment job decrypts the two configuration files and streams a
 bounded tar payload through SSH to the fixed release entry point.
+SSH keepalives preserve that connection during a slow, bounded registry transfer.
 
 The server resolves both requested GHCR digests before changing application
 state. It first checks the config-derived cache tag, otherwise pulls the verified
