@@ -16,7 +16,7 @@
     "export:archive": "node scripts/export-archive.mjs"
   },
   "dependencies": {
-    "@yiminlab/authkit": "0.3.10",
+    "@yiminlab/authkit": "0.3.11",
     "@yiminlab/voyage": "0.18.0",
     "dompurify": "^3.2.7",
     "lucide-react": "^0.468.0",
