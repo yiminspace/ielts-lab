@@ -6,7 +6,7 @@ import {
   typingMetrics,
   formatTime,
   reviewIndex,
-} from "../src/lib/study.mjs";
+} from "../apps/web/src/lib/study.mjs";
 
 test("word count handles contractions, punctuation and whitespace", () => {
   assert.equal(countWords("  It's a well-known idea.\nThree examples! "), 6);

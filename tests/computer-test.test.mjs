@@ -13,8 +13,8 @@ import {
   optionFromDrop,
   examDraftKey,
   validSession,
-} from "../src/lib/computer-test.mjs";
-import { buildGroups } from "../src/lib/questions.mjs";
+} from "../apps/web/src/lib/computer-test.mjs";
+import { buildGroups } from "../apps/web/src/lib/questions.mjs";
 test("deadline clock remains correct after background suspension and expires at zero", () => {
   assert.equal(remainingSeconds(null, 10000), null);
   assert.equal(remainingSeconds(60000, 10000), 50);
@@ -160,7 +160,7 @@ test("computer test sessions use separate drafts and reject incompatible saved s
 
 test("a stale tab cannot replace a newer same-session save, but an owner can save successive revisions", async () => {
   const { sessionSignature, prepareSessionSave } =
-    await import("../src/lib/computer-test.mjs");
+    await import("../apps/web/src/lib/computer-test.mjs");
   const original = {
     version: 1,
     runId: "one",
@@ -202,7 +202,7 @@ test("a stale tab cannot replace a newer same-session save, but an owner can sav
 
 test("keyboard question navigation stays within its visible part and does not consume answer-editing keys", async () => {
   const { navigationDestination } =
-    await import("../src/lib/computer-test.mjs");
+    await import("../apps/web/src/lib/computer-test.mjs");
   const numbers = [11, 12, 13, 14];
   assert.equal(navigationDestination(numbers, 12, "ArrowRight"), 13);
   assert.equal(navigationDestination(numbers, 12, "ArrowLeft"), 11);
@@ -215,7 +215,7 @@ test("keyboard question navigation stays within its visible part and does not co
   assert.equal(navigationDestination([], 13, "ArrowRight"), null);
 });
 test("keyboard split resizing respects readable bounds and an explicit equal-width reset", async () => {
-  const { splitByKeyboard } = await import("../src/lib/computer-test.mjs");
+  const { splitByKeyboard } = await import("../apps/web/src/lib/computer-test.mjs");
   assert.equal(splitByKeyboard(50, "ArrowLeft"), 48);
   assert.equal(splitByKeyboard(50, "ArrowRight"), 52);
   assert.equal(splitByKeyboard(30, "ArrowLeft"), 30);

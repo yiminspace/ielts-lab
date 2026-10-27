@@ -13,8 +13,8 @@ import {
   remainingSeconds,
   advancePaperAudio,
   validatePaperParts,
-} from "../src/lib/computer-test.mjs";
-import { gradeGroups } from "../src/lib/questions.mjs";
+} from "../apps/web/src/lib/computer-test.mjs";
+import { gradeGroups } from "../apps/web/src/lib/questions.mjs";
 function material(id, count = 10, kind = "listening", start = 1) {
   return {
     id,
@@ -207,7 +207,7 @@ test("audio failure or an incomplete paper cannot masquerade as a completed full
 });
 
 test("global inline prefixes follow mapped gaps without rewriting quantities or unrelated text", async () => {
-  const { renumberGapPrefixes } = await import("../src/lib/computer-test.mjs");
+  const { renumberGapPrefixes } = await import("../apps/web/src/lib/computer-test.mjs");
   const original = [4, 5, 6].map((number) => ({ number, slots: 1 }));
   const mapped = [10, 11, 12].map((number) => ({ number, slots: 1 }));
   const html =
@@ -244,7 +244,7 @@ test("global inline prefixes follow mapped gaps without rewriting quantities or 
 
 test("original G demo reading sections render the same global prefixes as their answer controls", async () => {
   const { generalTrainingItems } =
-    await import("../server/general-training.mjs");
+    await import("../services/api/general-training.mjs");
   const reading = generalTrainingItems.filter(
     (item) => item.kind === "reading",
   );

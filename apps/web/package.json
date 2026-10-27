@@ -1,0 +1,11 @@
+{
+  "name": "@ielts-lab/web",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b ../../tsconfig.json && vite build --config ../../vite.config.ts",
+    "dev": "vite --config ../../vite.config.ts"
+  },
+  "dependencies": {}
+}

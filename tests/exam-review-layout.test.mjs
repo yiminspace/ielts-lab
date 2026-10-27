@@ -22,7 +22,7 @@ function element(tag, children, attrs = {}) {
 }
 
 const source = await readFile(
-  new URL("../src/components/ExamWorkspace.tsx", import.meta.url),
+  new URL("../apps/web/src/components/ExamWorkspace.tsx", import.meta.url),
   "utf8",
 );
 const code = ts.transpileModule(`${source}\nexport { HtmlContent };`, {

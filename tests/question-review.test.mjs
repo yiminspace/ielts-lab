@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildGroups } from "../src/lib/questions.mjs";
+import { buildGroups } from "../apps/web/src/lib/questions.mjs";
 import {
   compactAnswer,
   completedBlankAnswer,
   resolveSolutionLine,
-} from "../src/lib/question-review.mjs";
+} from "../apps/web/src/lib/question-review.mjs";
 
 const lines = [
   { text: "The workshop starts on Tuesday." },

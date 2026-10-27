@@ -1,0 +1,225 @@
+import { test, expect, type BrowserContext } from "@playwright/test";
+import {
+  startBrowserFixture,
+  seedIdentity,
+  fakeMicrophone,
+  owner,
+  other,
+} from "./fixture.mjs";
+
+let fixture: Awaited<ReturnType<typeof startBrowserFixture>>;
+test.beforeAll(async () => {
+  fixture = await startBrowserFixture();
+});
+test.afterAll(async () => {
+  await fixture?.stop();
+});
+async function ownerContext(context: BrowserContext) {
+  if (fixture.hosted) await seedIdentity(context, owner);
+}
+
+test("IELTS theme keeps the study layout and scopes exam accessibility settings", async ({
+  page,
+  context,
+}) => {
+  await ownerContext(context);
+  await page.goto("/");
+  await expect(page.getByText("自己的节奏，扎实地练习。")).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "ielts");
+  const style = await page.locator("body").evaluate((element) => ({
+    color: getComputedStyle(element).color,
+    font: getComputedStyle(element).fontFamily,
+  }));
+  expect(style.font).toContain("Arial");
+  await page.getByRole("button", { name: "切换为暗色模式" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-mode", "dark");
+  await page.goto("/#/item/demo-reading");
+  await expect(page.locator(".practice-frame")).toHaveAttribute(
+    "data-theme",
+    "ielts",
+  );
+  await expect(page.locator(".practice-frame")).toHaveAttribute(
+    "data-mode",
+    "light",
+  );
+  expect(
+    await page
+      .locator(".practice-frame")
+      .evaluate((element) => getComputedStyle(element).backgroundColor),
+  ).toBe("rgb(255, 255, 255)");
+});
+
+test("anonymous and other accounts never load materials; owner sessions are checked by the API", async ({
+  browser,
+}) => {
+  test.skip(
+    !fixture.hosted,
+    "Set IELTS_TEST_ADMIN_DATABASE_URL to exercise real PostgreSQL and owner-only API.",
+  );
+  const anonymous = await browser.newContext();
+  const page = await anonymous.newPage();
+  let materialRequests = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/library") materialRequests++;
+  });
+  await page.goto(fixture.origin);
+  await expect(page.getByText("登录 IELTS Lab")).toBeVisible();
+  expect(materialRequests).toBe(0);
+  expect(
+    (await anonymous.request.get(`${fixture.origin}/api/library`)).status(),
+  ).toBe(401);
+  await anonymous.close();
+  const rejected = await browser.newContext();
+  await seedIdentity(rejected, other);
+  const denied = await rejected.newPage();
+  denied.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/library") materialRequests++;
+  });
+  await denied.goto(fixture.origin);
+  await expect(denied.getByText("此账号没有访问权限")).toBeVisible();
+  expect(materialRequests).toBe(0);
+  expect(
+    (await rejected.request.get(`${fixture.origin}/api/recordings`)).status(),
+  ).toBe(401);
+  await rejected.close();
+});
+
+test("expired cookies recover without remounting or losing the active writing draft", async ({
+  page,
+  context,
+}) => {
+  test.skip(!fixture.hosted, "Requires real hosted API/PostgreSQL fixture.");
+  await ownerContext(context);
+  await page.goto("/#/item/demo-writing");
+  const editor = page.locator("#writing-answer");
+  await expect(editor).toBeVisible();
+  await editor.fill("Original browser verification draft.");
+  await context.clearCookies();
+  const result = await page.evaluate(
+    async () => (await fetch("/api/progress")).status,
+  );
+  expect(result).toBe(200);
+  await expect(editor).toHaveValue("Original browser verification draft.");
+  await page.goto("/");
+  await page.getByRole("button", { name: "用户菜单", exact: true }).click();
+  await page.getByRole("menuitem", { name: "退出登录" }).click();
+  await expect(page.getByText("登录 IELTS Lab")).toBeVisible();
+  expect(
+    (await context.request.get(`${fixture.origin}/api/progress`)).status(),
+  ).toBe(401);
+  await expect(page.getByText("自己的节奏，扎实地练习。")).toHaveCount(0);
+});
+
+test("failed uploads survive reload; another device can play, download and delete the saved recording", async ({
+  browser,
+}) => {
+  const first = await browser.newContext({ acceptDownloads: true });
+  await ownerContext(first);
+  await fakeMicrophone(first);
+  const page = await first.newPage();
+  let failed = false;
+  await page.route("**/api/recordings?*", async (route) => {
+    if (route.request().method() === "POST" && !failed) {
+      failed = true;
+      await route.fulfill({
+        status: 503,
+        json: { error: "Original upload failure for recovery test" },
+      });
+    } else await route.continue();
+  });
+  await page.goto(`${fixture.origin}/#/item/demo-speaking`);
+  await page.getByRole("button", { name: "开始录音", exact: true }).click();
+  await page.getByRole("button", { name: "结束录音", exact: true }).click();
+  await expect(
+    page.getByText("Original upload failure for recovery test"),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "下载本机录音" })).toBeVisible();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "重试上传", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "重试上传", exact: true }).click();
+  await expect(
+    page.locator(".study-recorded").filter({ hasText: "已保存" }),
+  ).toHaveCount(1);
+  const second = await browser.newContext({ acceptDownloads: true });
+  await ownerContext(second);
+  const otherDevice = await second.newPage();
+  await otherDevice.goto(`${fixture.origin}/#/item/demo-speaking`);
+  const saved = otherDevice.locator(".study-recorded");
+  await expect(saved).toHaveCount(1);
+  const audio = saved.locator("audio");
+  await audio.evaluate((element: HTMLAudioElement) => element.play());
+  await expect
+    .poll(() => audio.evaluate((element: HTMLAudioElement) => element.duration))
+    .toBeGreaterThan(0);
+  await audio.evaluate((element: HTMLAudioElement) => element.pause());
+  const download = otherDevice.waitForEvent("download");
+  await otherDevice
+    .getByRole("button", { name: "下载录音", exact: true })
+    .click();
+  expect((await download).suggestedFilename()).toMatch(/\.wav$/);
+  otherDevice.once("dialog", (dialog) => dialog.accept());
+  await otherDevice.getByRole("button", { name: "删除", exact: true }).click();
+  await expect(saved).toHaveCount(0);
+  await page.getByRole("button", { name: "刷新列表", exact: true }).click();
+  await expect(page.locator(".study-recorded")).toHaveCount(0);
+  await second.close();
+  await first.close();
+});
+
+test("a cross-tab account change hides the previous account and clears its cookie", async ({
+  browser,
+}) => {
+  test.skip(!fixture.hosted, "Requires real hosted API/PostgreSQL fixture.");
+  const context = await browser.newContext();
+  await ownerContext(context);
+  const first = await context.newPage();
+  const second = await context.newPage();
+  await first.goto(fixture.origin);
+  await second.goto(fixture.origin);
+  await expect(second.getByText("自己的节奏，扎实地练习。")).toBeVisible();
+  await first.evaluate((otherId) => {
+    const encode = (value) =>
+      btoa(JSON.stringify(value))
+        .replace(/=/g, "")
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_");
+    localStorage.setItem(
+      "authkit_access_token",
+      `${encode({ alg: "original-test" })}.${encode({ sub: otherId, exp: Math.floor(Date.now() / 1000) + 3600 })}.original-test-signature`,
+    );
+  }, other);
+  await expect(second.getByText("此账号没有访问权限")).toBeVisible();
+  await expect(second.getByText("自己的节奏，扎实地练习。")).toHaveCount(0);
+  expect(
+    (await context.request.get(`${fixture.origin}/api/library`)).status(),
+  ).toBe(401);
+  await context.close();
+});
+
+test("leaving a speaking workspace stops the microphone and retains the unfinished audio outbox", async ({
+  browser,
+}) => {
+  const context = await browser.newContext();
+  await ownerContext(context);
+  await fakeMicrophone(context);
+  const page = await context.newPage();
+  await page.goto(`${fixture.origin}/#/item/demo-speaking`);
+  await page.getByRole("button", { name: "开始录音", exact: true }).click();
+  await page.getByRole("link", { name: "学习空间", exact: true }).click();
+  await expect(page.getByText("自己的节奏，扎实地练习。")).toBeVisible();
+  await page.goto(`${fixture.origin}/#/item/demo-speaking`);
+  await expect(
+    page.getByRole("button", { name: "重试上传", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "重试上传", exact: true }).click();
+  await expect(
+    page.locator(".study-recorded").filter({ hasText: "已保存" }),
+  ).toHaveCount(1);
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "删除", exact: true }).click();
+  await expect(page.locator(".study-recorded")).toHaveCount(0);
+  await context.close();
+});

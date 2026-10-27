@@ -5,13 +5,13 @@ import {
   resizeWritingSplit,
   writingHighlightRanges,
   changeWritingHighlight,
-} from "../src/lib/computer-writing-ui.mjs";
+} from "../apps/web/src/lib/computer-writing-ui.mjs";
 import {
   restorePaperWriting,
   switchPaperWritingTask,
   editPaperWriting,
   finishPaperWriting,
-} from "../src/lib/computer-writing-paper.mjs";
+} from "../apps/web/src/lib/computer-writing-paper.mjs";
 
 test("writing splitter pointer and keyboard sizing keep both panes readable", () => {
   assert.equal(writingSplit(-100), 30);
