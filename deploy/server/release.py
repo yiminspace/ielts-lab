@@ -14,14 +14,19 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import time
 
 BASE = Path('/srv/ielts-lab')
 DIGEST = re.compile(r'^sha256:[0-9a-f]{64}$')
 
-def run(args, **kwargs):
+def command_environment():
     # Do not forward arbitrary SSH client environment to privileged subprocesses.
-    env = {'PATH':'/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'HOME':'/root'}
+    return {'PATH':'/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'HOME':'/root'}
+
+
+def run(args, **kwargs):
+    env = command_environment()
     env.update(kwargs.pop('env', {}))
     return subprocess.run(args, check=True, env=env, **kwargs)
 
@@ -55,6 +60,82 @@ def validate_image(image, sha, *, expected_id=None, requested_ref=None):
         raise ValueError('Image identity, platform or release metadata does not match')
     if requested_ref is not None and requested_ref not in image.get('RepoDigests', []):
         raise ValueError('Docker did not retain the requested registry digest')
+    return image_id
+
+
+def read_saved_config(stream, expected_config):
+    """Read bounded metadata from a Docker save stream without extracting layers.
+
+    The Docker archive manifest supplies the config path. Its naming differs
+    between classic and containerd image stores, so never infer it from image ID.
+    """
+    if not isinstance(expected_config, str) or not DIGEST.fullmatch(expected_config):
+        raise ValueError('Expected image config digest is invalid')
+    manifest = None
+    manifest_seen = False
+    matching = []
+    with tarfile.open(fileobj=stream, mode='r|') as archive:
+        for member in archive:
+            if member.name == 'manifest.json':
+                if manifest_seen or not member.isfile():
+                    raise ValueError('Docker archive manifest is ambiguous or invalid')
+                manifest_seen = True
+            if not member.isfile() or member.size > 2 * 1024 * 1024:
+                if member.name == 'manifest.json':
+                    raise ValueError('Docker archive manifest exceeds its limit')
+                continue
+            # Only bounded metadata is read into memory; layer tar members stream
+            # past without extraction or buffering the full image archive.
+            raw = archive.extractfile(member).read()
+            if member.name == 'manifest.json':
+                manifest = json.loads(raw)
+            if 'sha256:' + hashlib.sha256(raw).hexdigest() == expected_config:
+                matching.append((member.name, raw))
+                if len(matching) > 1:
+                    raise ValueError('Docker archive config is ambiguous')
+    if (not isinstance(manifest, list) or len(manifest) != 1 or
+            not isinstance(manifest[0], dict) or len(matching) != 1 or
+            manifest[0].get('Config') != matching[0][0]):
+        raise ValueError('Saved image config digest does not match the requested manifest')
+    config = json.loads(matching[0][1])
+    if not isinstance(config, dict):
+        raise ValueError('Saved image config is invalid')
+    return config
+
+
+def verify_saved_image(image, sha, expected_config):
+    """Bind an engine's immutable ID to the remotely verified raw config."""
+    image_id = validate_image(image, sha)
+    # Docker 29's containerd store can report a manifest ID where older engines
+    # report the config ID. Export by actual immutable ID and hash the raw config.
+    process = subprocess.Popen(['docker', 'image', 'save', image_id],
+                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                               env=command_environment())
+    timer = threading.Timer(180, process.kill)
+    timer.daemon = True
+    timer.start()
+    try:
+        saved = read_saved_config(process.stdout, expected_config)
+        if process.wait(timeout=15) != 0:
+            raise ValueError('Docker image export failed')
+    finally:
+        timer.cancel()
+        process.stdout.close()
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+    rootfs = saved.get('rootfs') or {}
+    observed = image.get('RootFS') or {}
+    layers = rootfs.get('diff_ids')
+    if (rootfs.get('type') != 'layers' or observed.get('Type') != 'layers' or
+            not isinstance(layers, list) or
+            not all(isinstance(value, str) and DIGEST.fullmatch(value) for value in layers) or
+            layers != observed.get('Layers')):
+        raise ValueError('Saved image rootfs does not match the inspected image')
+    # Metadata must agree in both the raw, digest-verified config and inspection.
+    validate_image({'Id': image_id, 'Os': saved.get('os'),
+                    'Architecture': saved.get('architecture'),
+                    'Config': saved.get('config')}, sha)
     return image_id
 
 
@@ -103,36 +184,39 @@ def prepare_image(role, requested_digest, sha, stage):
         raise ValueError('Image source is not allowed')
     repository = REPOSITORIES[role]
     requested_ref = f'{repository}@{requested_digest}'
+    selected_digest, expected_config = resolve_source(repository, requested_digest)
+    selected_ref = f'{repository}@{selected_digest}'
+    local_tag = f'ielts-local/ielts-{role}:sha256-{expected_config[7:]}'
     try:
-        run(['docker', 'pull', '--platform', 'linux/amd64', requested_ref],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=90)
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        # Userspace copy bypasses a broken daemon proxy without changing it.
-        selected_digest, expected_id = resolve_source(repository, requested_digest)
+        cached = inspect_image(local_tag)
+    except subprocess.CalledProcessError:
+        cached = None
+    if cached is None:
         try:
-            cached = inspect_image(expected_id)
-        except subprocess.CalledProcessError:
-            cached = None
-        if cached is None:
+            run(['docker', 'pull', '--platform', 'linux/amd64', selected_ref],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=90)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            # Userspace copy bypasses a broken daemon proxy without changing it.
             with tempfile.TemporaryDirectory(prefix=role + '-image-', dir=stage) as temporary:
                 directory = Path(temporary)
                 os.chmod(directory, 0o700)
                 archive = directory / 'image.tar'
                 run(['skopeo', '--override-os', 'linux', '--override-arch', 'amd64', 'copy',
                      '--retry-times', '2', f'docker://{repository}@{selected_digest}',
-                     f'docker-archive:{archive}'], stdout=subprocess.PIPE,
+                     f'docker-archive:{archive}:{local_tag}'], stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE, timeout=1200)
                 os.chmod(archive, 0o600)
                 run(['docker', 'load', '--input', str(archive)], stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE, timeout=180)
-            cached = inspect_image(expected_id)
-        # Cached/preloaded images need the same remote digest chain and metadata.
-        image_id = validate_image(cached, sha, expected_id=expected_id)
-    else:
-        image_id = validate_image(inspect_image(requested_ref), sha, requested_ref=requested_ref)
+            cached = inspect_image(local_tag)
+        else:
+            cached = inspect_image(selected_ref)
+            validate_image(cached, sha, requested_ref=selected_ref)
+    # Cached/preloaded and freshly loaded images need the same remote digest
+    # chain, raw config, rootfs and release metadata, regardless of engine layout.
+    image_id = verify_saved_image(cached, sha, expected_config)
     # Shared platform deploys prune dangling images. Keep a fixed local tag so a
     # just-replaced release remains available for rollback; execution still uses ID.
-    local_tag = f'ielts-local/ielts-{role}:sha256-{image_id[7:]}'
     run(['docker', 'tag', image_id, local_tag], stdout=subprocess.PIPE,
         stderr=subprocess.PIPE, timeout=30)
     return {'requested': requested_ref, 'imageId': image_id}
