@@ -91,9 +91,21 @@ using exact `sha256` digests. The build jobs never receive production secrets.
 The protected deployment job decrypts the two configuration files and streams a
 bounded tar payload through SSH to the fixed release entry point.
 
-The server pulls both images, runs migrations, installs mode-600 runtime
-configuration, starts Compose without building, and checks API/Web health
-against the same commit SHA. A successful release saves non-secret immutable
+The server resolves both requested GHCR digests before changing application
+state. It first tries Docker pull; if the daemon's network/proxy route fails,
+it uses the preinstalled Skopeo binary in a userspace environment without inherited
+proxy variables. That path verifies the exact OCI index/manifest hashes, selects
+one linux/amd64 image, copies the pinned image through a private temporary Docker
+archive and loads it. This does not build images or change/restart Docker/Clash.
+
+Both acquisition paths verify the image's OCI source/revision labels and GIT_SHA.
+Only then does the server run migrations, install mode-600 runtime configuration,
+and start Compose without building or pulling. Runtime/migration/rollback commands
+use the verified immutable Docker config image ID; `release.json` retains both
+requested registry digests and actual image IDs, and `.env` stores the runtime
+IDs for reboot recovery. Fixed `ielts-local` tags retain validated images when
+other platform releases prune dangling images. API/Web health must match the
+same commit SHA. A successful release saves non-secret immutable
 image pointers for host reboot recovery. Failed startup restores the previous
 configuration/images when available; schema rollback is not automatic and
 requires a reviewed, backward-compatible migration strategy.
