@@ -9,12 +9,12 @@ import {
   finishPaperWriting,
   paperWritingAttempt,
   paperWritingCompletion,
-} from "../src/lib/computer-writing-paper.mjs";
+} from "../apps/web/src/lib/computer-writing-paper.mjs";
 import {
   writingClock,
   writingCanRecord,
   writingDraftRevision,
-} from "../src/lib/computer-writing.mjs";
+} from "../apps/web/src/lib/computer-writing.mjs";
 
 const config = {
   paperId: "general-paper",

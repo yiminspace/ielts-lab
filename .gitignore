@@ -10,3 +10,8 @@ playwright-report/
 test-results/
 .DS_Store
 *.tsbuildinfo
+
+__pycache__/
+*.pyc
+**/runtime.env
+**/migration.env

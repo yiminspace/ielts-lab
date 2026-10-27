@@ -6,7 +6,10 @@ import { randomUUID } from "node:crypto";
 import ts from "typescript";
 
 const code = ts.transpileModule(
-  await readFile(new URL("../src/lib/progress.ts", import.meta.url), "utf8"),
+  await readFile(
+    new URL("../apps/web/src/lib/progress.ts", import.meta.url),
+    "utf8",
+  ),
   {
     compilerOptions: {
       module: ts.ModuleKind.CommonJS,
@@ -31,6 +34,11 @@ function environment() {
       }),
       crypto: { randomUUID },
       localStorage: {
+        get length() {
+          return storage.size;
+        },
+        key: (index) => [...storage.keys()][index] ?? null,
+        removeItem: (key) => storage.delete(key),
         getItem: (k) => storage.get(k) ?? null,
         setItem: (k, v) => storage.set(k, v),
       },

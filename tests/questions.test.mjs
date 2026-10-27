@@ -8,7 +8,7 @@ import {
   parseTranscript,
   displayAnswer,
   answerQuotes,
-} from "../src/lib/questions.mjs";
+} from "../apps/web/src/lib/questions.mjs";
 // Original synthetic examples model the observed archive schemas without reproducing source questions.
 function group(type, question, answers, start = 1, count = answers.length) {
   return buildGroups({
@@ -156,7 +156,7 @@ test("an explicitly blank submitted answer displays as blank rather than the key
 });
 
 test("bundled demonstration retains listening prompt context and reading passage alongside all five types", async () => {
-  const { demoItems } = await import("../server/demo.mjs");
+  const { demoItems } = await import("../services/api/demo.mjs");
   const listening = demoItems.find((item) => item.kind === "listening");
   const reading = demoItems.find((item) => item.kind === "reading");
   const listeningGroups = buildGroups(listening.data);

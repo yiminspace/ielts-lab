@@ -6,8 +6,8 @@ import vm from "node:vm";
 import ts from "typescript";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import * as study from "../src/lib/study.mjs";
-import * as writingUi from "../src/lib/computer-writing-ui.mjs";
+import * as study from "../apps/web/src/lib/study.mjs";
+import * as writingUi from "../apps/web/src/lib/computer-writing-ui.mjs";
 
 const attempt = {
   id: "saved-writing",
@@ -69,7 +69,7 @@ test("writing history reads essay/text variants, preserves submitted blanks and 
 
 const code = ts.transpileModule(
   await readFile(
-    new URL("../src/components/StudyWorkspace.tsx", import.meta.url),
+    new URL("../apps/web/src/components/StudyWorkspace.tsx", import.meta.url),
     "utf8",
   ),
   {
@@ -109,6 +109,9 @@ function renderReview(reviewAttempt, savedDraft = {}) {
         };
       if (name === "../lib/study.mjs") return study;
       if (name === "../lib/computer-writing-ui.mjs") return writingUi;
+      if (name === "../lib/runtime") return {};
+      if (name === "../lib/recordings") return {};
+      if (name === "./SpeakingRecordings") return { default: () => null };
       if (name === "./PracticeFrame")
         return {
           default: ({
@@ -254,6 +257,9 @@ test("finishing writing records once, snapshots notes, and preserves the separat
         };
       if (name === "../lib/study.mjs") return study;
       if (name === "../lib/computer-writing-ui.mjs") return writingUi;
+      if (name === "../lib/runtime") return {};
+      if (name === "../lib/recordings") return {};
+      if (name === "./SpeakingRecordings") return { default: () => null };
       if (name === "./PracticeFrame" || name === "../lib/content") return {};
       if (name.endsWith(".css")) return {};
       return require(name);

@@ -2,17 +2,43 @@ name: Check
 on:
   push:
   pull_request:
+  workflow_call:
 permissions:
   contents: read
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: ielts-ci-test-only
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      IELTS_TEST_ADMIN_DATABASE_URL: postgres://postgres:ielts-ci-test-only@127.0.0.1:5432/postgres
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - run: python3 -m py_compile deploy/server/release.py deploy/server/ssh-entry.py deploy/backup.py
+      - run: bash -n deploy/deploy-ci.sh deploy/restore-check.sh
+      - run: python3 -m unittest discover -s deploy/tests -v
+      - name: Verify image isolation
+        run: |
+          docker build -f deploy/api.Dockerfile -t ielts-api-check .
+          docker build -f deploy/web.Dockerfile -t ielts-web-check .
+          node deploy/check-image.mjs ielts-api-check ielts-web-check

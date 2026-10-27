@@ -1,0 +1,1343 @@
+.computer-test {
+  --ct-bg: var(--vg-exam-paper);
+  --ct-fg: var(--vg-exam-ink);
+  --ct-muted: var(--vg-exam-muted);
+  --ct-panel: var(--vg-exam-panel);
+  --ct-line: var(--vg-exam-rule);
+  --ct-focus: var(--vg-exam-focus);
+  --ct-font: 16px;
+  position: fixed;
+  inset: 0;
+  z-index: 75;
+  display: flex;
+  flex-direction: column;
+  background: var(--ct-bg);
+  color: var(--ct-fg);
+  font:
+    var(--ct-font)/1.5 Arial,
+    Helvetica,
+    sans-serif;
+  overflow: hidden;
+  overflow: clip;
+  letter-spacing: normal;
+  text-align: left;
+}
+.computer-test * {
+  box-sizing: border-box;
+}
+.computer-test button,
+.computer-test input,
+.computer-test select,
+.computer-test textarea {
+  font: inherit;
+  letter-spacing: normal;
+}
+.computer-test button,
+.computer-test a {
+  color: var(--ct-fg);
+}
+.computer-test button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  background: var(--ct-bg);
+  border: 1px solid var(--ct-line);
+  border-radius: 2px;
+  box-shadow: none;
+  padding: 8px 15px;
+  line-height: 1.3;
+  min-height: 0;
+  font-weight: 400;
+}
+.computer-test button:hover:not(:disabled) {
+  background: var(--ct-panel);
+  border-color: var(--vg-color-text-subtle);
+}
+.computer-test button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.computer-test button:focus-visible,
+.computer-test a:focus-visible,
+.computer-test input:focus-visible,
+.computer-test select:focus-visible,
+.computer-test textarea:focus-visible {
+  outline: 2px solid var(--ct-focus);
+  outline-offset: 1px;
+}
+.computer-test input[type="checkbox"],
+.computer-test input[type="radio"] {
+  width: 17px;
+  height: 17px;
+  margin: 2px 7px 0 0;
+  accent-color: var(--vg-color-text);
+  flex-shrink: 0;
+}
+.computer-test a {
+  text-decoration: underline;
+}
+.computer-test h1,
+.computer-test h2,
+.computer-test h3,
+.computer-test p {
+  color: inherit;
+  letter-spacing: normal;
+}
+.computer-test h1 {
+  font-size: 1.9em;
+  line-height: 1.25;
+  font-weight: 700;
+}
+.computer-test h2 {
+  font-size: 1em;
+  line-height: 1.5;
+  font-weight: 700;
+}
+.computer-test input,
+.computer-test select,
+.computer-test textarea {
+  color: var(--ct-fg);
+  background: var(--ct-bg);
+  border: 1px solid var(--vg-color-text-subtle);
+  border-radius: 2px;
+}
+.computer-test .ct-primary {
+  background: var(--vg-color-text);
+  color: var(--vg-color-filled-text);
+  border: 1px solid var(--vg-color-text);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 19px;
+  border-radius: 2px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.computer-test .ct-primary:hover {
+  background: var(--vg-color-text-muted);
+  color: var(--vg-color-filled-text);
+}
+.computer-test .ct-own-brand {
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  color: var(--vg-color-success);
+  white-space: nowrap;
+  line-height: 1.1;
+}
+.computer-test audio {
+  display: none;
+}
+.computer-test .ct-header {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  flex-shrink: 0;
+  min-height: 65px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--vg-color-border);
+  background: var(--ct-bg);
+  color: var(--ct-fg);
+  z-index: 3;
+}
+.computer-test .ct-test-taker {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+  font-size: 16px;
+}
+.computer-test .ct-test-taker > strong {
+  font-size: 17px;
+  font-weight: 700;
+}
+.computer-test .ct-test-taker > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 14px;
+  min-height: 20px;
+}
+.computer-test .ct-header-tools {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 23px;
+}
+.computer-test .ct-header-tools > button {
+  padding: 4px;
+  border: 0;
+  background: transparent;
+  min-width: 29px;
+}
+.computer-test .ct-header-tools > button.ct-pressed {
+  background: var(--ct-panel);
+}
+.computer-test .ct-countdown {
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+}
+.computer-test .ct-time-low {
+  color: var(--vg-color-danger);
+}
+.computer-test .ct-volume {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.computer-test .ct-volume input {
+  width: 70px;
+  accent-color: var(--vg-color-text-muted);
+  cursor: pointer;
+}
+.computer-test .ct-live-message {
+  background: var(--vg-color-warning-soft);
+  color: var(--vg-color-warning);
+  padding: 7px 18px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--vg-color-warning);
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+.computer-test .ct-live-message button {
+  padding: 3px 9px;
+  color: var(--vg-color-text);
+  background: var(--vg-color-surface);
+}
+.computer-test .ct-workarea {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+.computer-test .ct-exam-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+.computer-test .ct-instruction {
+  margin: 30px 17px 0;
+  padding: 10px 17px 13px;
+  border: 1px solid var(--vg-color-border);
+  background: var(--ct-panel);
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.computer-test .ct-instruction > strong {
+  font-size: 17px;
+}
+.computer-test .ct-instruction p {
+  margin: 3px 0 0;
+}
+.computer-test .ct-panes {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding-top: 16px;
+}
+.computer-test .ct-question-column {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.computer-test .ct-questions {
+  overflow: auto;
+  min-width: 0;
+  flex: 1;
+  padding: 0 17px 24px;
+  overscroll-behavior: contain;
+}
+.computer-test .ct-question-group {
+  margin: 0 0 33px;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+}
+.computer-test .ct-question-group > h2 {
+  margin: 0 0 9px;
+}
+.computer-test .ct-rich {
+  line-height: 1.7;
+  overflow-wrap: break-word;
+  color: var(--ct-fg);
+}
+.computer-test .ct-rich p {
+  margin: 0 0 15px;
+}
+.computer-test .ct-rich h1,
+.computer-test .ct-rich h2,
+.computer-test .ct-rich h3 {
+  margin: 15px 0;
+  font-size: 1em;
+}
+.computer-test .ct-rich ul,
+.computer-test .ct-rich ol {
+  padding-left: 30px;
+  margin: 0 0 18px;
+}
+.computer-test .ct-rich table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 14px 0;
+}
+.computer-test .ct-rich td,
+.computer-test .ct-rich th {
+  border: 1px solid var(--ct-line);
+  padding: 10px 12px;
+  vertical-align: top;
+}
+.computer-test .ct-rich th {
+  background: var(--ct-panel);
+}
+.computer-test .ct-rich img,
+.computer-test .ct-diagram {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 16px auto;
+}
+.computer-test .ct-rich mark {
+  background: var(--vg-color-mark);
+  color: var(--vg-color-text);
+  padding: 0;
+  cursor: pointer;
+}
+.computer-test .ct-fill-target {
+  display: inline-block;
+  vertical-align: baseline;
+  margin: 0 4px;
+}
+.computer-test input.ct-gap {
+  width: 9em;
+  height: 1.375em;
+  min-height: 22px;
+  padding: 1px 7px;
+  line-height: 1;
+  font-size: 1em;
+  background: var(--ct-bg);
+  border: 1px solid var(--vg-color-text-subtle);
+  border-radius: 3px;
+  text-align: left;
+  box-shadow: none;
+}
+.computer-test input.ct-gap::placeholder {
+  color: var(--ct-fg);
+  opacity: 1;
+  text-align: center;
+  font-weight: 700;
+}
+.computer-test input.ct-gap:focus {
+  outline: 2px solid var(--ct-focus);
+  outline-offset: 0;
+  border-color: var(--ct-focus);
+}
+.computer-test .ct-match-target {
+  display: inline-flex;
+  margin: 2px 5px;
+  vertical-align: middle;
+  min-width: 100px;
+  max-width: 240px;
+}
+.computer-test .ct-match-target select {
+  height: 29px;
+  max-width: 240px;
+  min-width: 100px;
+  font-size: 1em;
+  line-height: 1.3;
+  padding: 2px 5px;
+  cursor: pointer;
+}
+.computer-test .ct-match-target:hover {
+  outline: 2px dashed var(--ct-focus);
+  outline-offset: 2px;
+}
+.computer-test .ct-option-bank {
+  margin: 18px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 900px;
+}
+.computer-test .ct-draggable-option {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  border: 1px solid var(--ct-line);
+  background: var(--ct-panel);
+  padding: 6px 11px;
+  cursor: grab;
+  border-radius: 2px;
+}
+.computer-test .ct-draggable-option:active {
+  cursor: grabbing;
+}
+.computer-test .ct-draggable-option > .ct-rich {
+  line-height: 1.5;
+}
+.computer-test .ct-match-matrix-frame {
+  border: 1px solid var(--ct-line);
+  padding: 16px;
+  margin: 16px 0;
+  overflow-x: auto;
+}
+.computer-test .ct-match-matrix {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 1em;
+}
+.computer-test .ct-match-matrix th,
+.computer-test .ct-match-matrix td {
+  border: 0;
+  border-bottom: 1px solid var(--ct-fg);
+  padding: 9px 0;
+  background: transparent;
+}
+.computer-test .ct-match-matrix thead th {
+  height: 44px;
+  font-weight: 700;
+  text-align: center;
+}
+.computer-test .ct-match-matrix th:not(:first-child),
+.computer-test .ct-match-matrix td {
+  width: 42px;
+  border-left: 1px solid var(--ct-fg);
+  text-align: center;
+  vertical-align: top;
+}
+.computer-test .ct-match-matrix tbody th {
+  font-weight: 400;
+  text-align: left;
+}
+.computer-test .ct-match-matrix tbody tr:last-child > * {
+  border-bottom: 0;
+}
+.computer-test .ct-matrix-statement {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding-right: 10px;
+  min-height: 36px;
+}
+.computer-test .ct-matrix-number {
+  display: inline-block;
+  flex-shrink: 0;
+  min-width: 28px;
+  padding: 2px;
+  text-align: center;
+  border: 2px solid transparent;
+  border-radius: 2px;
+  line-height: 1.5;
+}
+.computer-test .ct-matrix-number.ct-active {
+  border-color: var(--ct-focus);
+}
+.computer-test .ct-match-matrix label {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 36px;
+  padding-top: 3px;
+  cursor: pointer;
+}
+.computer-test .ct-match-matrix input {
+  margin: 0;
+}
+.computer-test .ct-match-matrix .ct-rich {
+  min-width: 0;
+  line-height: 1.5;
+}
+.computer-test .ct-match-legend {
+  display: table;
+  max-width: 100%;
+  border: 1px solid var(--ct-fg);
+  margin: 16px 0;
+}
+.computer-test .ct-match-legend > strong,
+.computer-test .ct-match-legend > .ct-rich {
+  display: block;
+  padding: 16px 8px;
+}
+.computer-test .ct-match-legend table {
+  border-collapse: collapse;
+}
+.computer-test .ct-match-legend th,
+.computer-test .ct-match-legend td {
+  padding: 7px 8px;
+  border-top: 1px solid var(--ct-fg);
+  font-weight: 400;
+  vertical-align: top;
+}
+.computer-test .ct-match-legend th {
+  border-right: 1px solid var(--ct-fg);
+}
+.computer-test .ct-match-legend .ct-rich > :first-child {
+  margin-top: 0;
+}
+.computer-test .ct-match-legend .ct-rich > :last-child {
+  margin-bottom: 0;
+}
+.computer-test .ct-choice-question {
+  border: 0;
+  padding: 0;
+  margin: 24px 0;
+  min-width: 0;
+  scroll-margin-top: 12px;
+}
+.computer-test .ct-choice-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  width: 100%;
+  padding: 0;
+  margin: 0 0 12px;
+  font-size: 1em;
+  line-height: 1.7;
+}
+.computer-test .ct-choice-heading > strong {
+  display: inline-block;
+  margin-right: 7px;
+  flex-shrink: 0;
+}
+.computer-test .ct-choice-heading > .ct-rich {
+  flex: 1;
+  min-width: 0;
+}
+.computer-test .ct-choice-heading > .ct-rich > :first-child {
+  margin-top: 0;
+}
+.computer-test .ct-choice-heading > .ct-rich > :last-child {
+  margin-bottom: 0;
+}
+.computer-test .ct-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.computer-test .ct-choice-question > label {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 8px 0;
+  line-height: 1.6;
+  cursor: pointer;
+  width: fit-content;
+  max-width: 100%;
+}
+.computer-test .ct-choice-question > label > input {
+  margin-top: 4px;
+}
+.computer-test .ct-choice-question > label > .ct-rich {
+  line-height: 1.6;
+}
+.computer-test .ct-choice-question > label > strong {
+  font-weight: 700;
+  margin-right: 4px;
+}
+.computer-test .ct-fallback-answers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin: 15px 0;
+}
+.computer-test .ct-fallback-answers label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.computer-test .ct-compatibility,
+.computer-test .ct-missing {
+  font-size: 13px;
+  border-left: 3px solid var(--vg-color-warning);
+  padding: 7px 12px;
+  color: var(--ct-muted);
+}
+.computer-test .ct-reading-passage {
+  overflow: auto;
+  min-width: 0;
+  flex-shrink: 0;
+  padding: 0 25px 100px 20px;
+  line-height: 1.8;
+}
+.computer-test .ct-reading-passage .ct-rich {
+  line-height: 1.85;
+}
+.computer-test .ct-reading .ct-questions {
+  padding-left: 25px;
+}
+.computer-test .ct-divider {
+  width: 8px;
+  background: var(--ct-panel);
+  border-left: 1px solid var(--ct-line);
+  border-right: 1px solid var(--ct-line);
+  cursor: col-resize;
+  flex-shrink: 0;
+  touch-action: none;
+  position: relative;
+}
+.computer-test .ct-divider::after {
+  content: "⋮";
+  position: absolute;
+  top: 48%;
+  left: 0;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--ct-muted);
+}
+.computer-test .ct-notes {
+  width: 300px;
+  max-width: 35vw;
+  flex-shrink: 0;
+  border-left: 1px solid var(--ct-line);
+  display: flex;
+  flex-direction: column;
+  background: var(--ct-bg);
+}
+.computer-test .ct-notes > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 17px 17px 12px;
+  border-bottom: 1px solid var(--ct-line);
+}
+.computer-test .ct-notes button {
+  padding: 0;
+  border: 0;
+}
+.computer-test .ct-notes textarea {
+  flex: 1;
+  width: 100%;
+  resize: none;
+  border: 0;
+  padding: 18px;
+  outline-offset: -3px;
+  line-height: 1.7;
+  font-size: 15px;
+}
+.computer-test .ct-step-controls {
+  display: flex;
+  flex: 0 0 72px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  height: 72px;
+  padding: 12px 17px;
+  background: var(--ct-bg);
+}
+.computer-test .ct-step-controls button {
+  height: 48px;
+  width: 48px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: var(--vg-color-text);
+  color: var(--vg-color-filled-text);
+}
+.computer-test .ct-step-controls button:hover:not(:disabled) {
+  background: var(--vg-color-text-muted);
+  color: var(--vg-color-filled-text);
+}
+.computer-test .ct-step-controls button:disabled {
+  background: var(--vg-color-border);
+  color: var(--vg-color-filled-text);
+  opacity: 1;
+}
+.computer-test .ct-review-marker {
+  margin-top: 35px;
+  font-size: 13px;
+  color: var(--ct-muted);
+}
+.computer-test .ct-review-marker label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+.computer-test .ct-footer {
+  height: 56px;
+  min-height: 56px;
+  display: flex;
+  align-items: stretch;
+  border-top: 1px solid var(--vg-color-surface-raised);
+  background: var(--ct-bg);
+  z-index: 5;
+  flex-shrink: 0;
+}
+.computer-test .ct-part {
+  display: flex;
+  gap: 25px;
+  align-items: center;
+  padding-left: 22px;
+  min-width: 0;
+}
+.computer-test .ct-part > strong {
+  white-space: nowrap;
+  font-size: 16px;
+}
+.computer-test .ct-question-numbers {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 100%;
+  overflow: auto;
+}
+.computer-test .ct-question-numbers > button {
+  position: relative;
+  padding: 4px 6px;
+  min-width: 24px;
+  line-height: 1.3;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+  font-size: 16px;
+  height: 28px;
+}
+.computer-test .ct-question-numbers > button.ct-active {
+  outline: 2px solid var(--ct-focus);
+  outline-offset: -1px;
+  border-radius: 2px;
+  font-weight: 700;
+}
+.computer-test .ct-question-progress {
+  position: absolute;
+  top: -11px;
+  height: 3px;
+  left: 1px;
+  right: 1px;
+  background: var(--vg-color-border);
+}
+.computer-test .ct-is-answered .ct-question-progress {
+  background: var(--vg-color-text-muted);
+}
+.computer-test .ct-question-numbers i {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--vg-color-warning);
+  right: 0;
+  bottom: -4px;
+}
+.computer-test .ct-answer-count {
+  margin: auto 20px auto auto;
+  font-size: 14px;
+  color: var(--ct-muted);
+  white-space: nowrap;
+}
+.computer-test button.ct-review-submit {
+  width: 79px;
+  min-width: 79px;
+  margin: 0;
+  border: 0;
+  background: var(--ct-panel);
+  border-radius: 0;
+  padding: 0;
+}
+.computer-test .ct-text-menu {
+  position: fixed;
+  z-index: 9;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  background: var(--ct-bg);
+  border: 1px solid var(--ct-line);
+  box-shadow: 0 2px 9px var(--vg-color-overlay);
+  max-width: 330px;
+}
+.computer-test .ct-text-menu button {
+  border: 0;
+  font-size: 12px;
+  padding: 9px 8px;
+}
+.computer-test .ct-options-screen {
+  position: absolute;
+  inset: 0;
+  background: var(--ct-bg);
+  z-index: 20;
+  overflow: auto;
+}
+.computer-test .ct-options-back,
+.computer-test .ct-options-close {
+  position: absolute;
+  top: 30px;
+  border: 0;
+  background: transparent;
+  padding: 7px;
+}
+.computer-test .ct-options-back {
+  left: 27px;
+}
+.computer-test .ct-options-close {
+  right: 27px;
+}
+.computer-test .ct-options-center {
+  max-width: 560px;
+  margin: 112px auto 60px;
+  text-align: center;
+  padding: 0 25px;
+}
+.computer-test .ct-options-center h1 {
+  margin: 0 0 45px;
+  font-size: 34px;
+}
+.computer-test .ct-options-center p {
+  line-height: 1.7;
+}
+.computer-test .ct-option-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: 100%;
+  max-width: 420px;
+  margin: auto;
+}
+.computer-test .ct-option-choices button {
+  min-height: 53px;
+  padding: 12px 20px;
+  font-size: 18px;
+  background: var(--ct-bg);
+  border: 1px solid var(--ct-fg);
+  position: relative;
+}
+.computer-test .ct-option-choices button > svg {
+  position: absolute;
+  right: 15px;
+}
+.computer-test .ct-option-choices button.ct-selected {
+  border: 2px solid var(--ct-fg);
+  font-weight: 700;
+}
+.computer-test .ct-setup {
+  overflow: auto;
+  flex: 1;
+  padding: 27px 32px;
+  background: var(--ct-bg);
+}
+.computer-test .ct-setup > main {
+  max-width: 720px;
+  margin: 45px auto 35px;
+}
+.computer-test .ct-setup-label {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--vg-color-text-subtle);
+}
+.computer-test .ct-setup h1 {
+  font-size: 34px;
+  margin: 10px 0 8px;
+}
+.computer-test .ct-setup-title {
+  font-size: 19px;
+  font-weight: 700;
+  margin: 0 0 26px;
+}
+.computer-test .ct-setup main > p {
+  line-height: 1.8;
+}
+.computer-test .ct-time-choice {
+  border: 1px solid var(--ct-line);
+  padding: 20px 25px;
+  margin: 26px 0;
+}
+.computer-test .ct-time-choice legend {
+  padding: 0 7px;
+  font-weight: 700;
+}
+.computer-test .ct-time-choice label {
+  display: flex;
+  align-items: center;
+  margin: 12px 0;
+  gap: 5px;
+}
+.computer-test .ct-time-choice input[type="number"] {
+  width: 68px;
+  margin-left: 10px;
+  padding: 4px 8px;
+}
+.computer-test .ct-time-choice small {
+  display: block;
+  font-size: 12px;
+  color: var(--ct-muted);
+  margin-top: 15px;
+}
+.computer-test .ct-setup-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 26px 0;
+}
+.computer-test .ct-setup-actions > button:first-child {
+  margin-right: auto;
+}
+.computer-test .ct-independent {
+  font-size: 11px;
+  color: var(--ct-muted);
+  margin-top: 33px;
+}
+.computer-test .ct-resume {
+  border-top: 1px solid var(--ct-line);
+  border-bottom: 1px solid var(--ct-line);
+  padding: 18px 0;
+  margin: 24px 0;
+}
+.computer-test .ct-resume p {
+  font-size: 14px;
+  margin: 5px 0 13px;
+}
+.computer-test .ct-error {
+  padding: 12px;
+  background: var(--vg-color-warning-soft);
+  color: var(--vg-color-danger);
+  border-left: 3px solid var(--vg-color-danger);
+}
+.computer-test .ct-submission,
+.computer-test .ct-complete {
+  overflow: auto;
+  flex: 1;
+  padding: 45px max(30px, calc((100vw - 1000px) / 2)) 70px;
+}
+.computer-test .ct-submission h1,
+.computer-test .ct-complete h1 {
+  margin: 0 0 18px;
+  font-size: 30px;
+}
+.computer-test .ct-submission h2 {
+  margin-top: 34px;
+}
+.computer-test .ct-submission p,
+.computer-test .ct-complete p {
+  margin: 12px 0;
+  line-height: 1.7;
+}
+.computer-test .ct-review-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin: 20px 0 30px;
+}
+.computer-test .ct-review-grid button {
+  justify-content: flex-start;
+  padding: 13px 12px;
+  gap: 10px;
+}
+.computer-test .ct-review-grid span {
+  font-size: 12px;
+  color: var(--ct-muted);
+}
+.computer-test .ct-review-grid .ct-is-answered {
+  background: var(--ct-panel);
+}
+.computer-test .ct-review-grid .ct-marked {
+  border-color: var(--vg-color-warning);
+}
+.computer-test .ct-submission-actions {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  flex-wrap: wrap;
+  margin-top: 35px;
+}
+.computer-test .ct-complete {
+  max-width: 100%;
+  text-align: left;
+}
+.computer-test .ct-score {
+  margin: 35px 0 20px;
+}
+.computer-test .ct-score strong {
+  font-size: 48px;
+}
+.computer-test .ct-score span {
+  font-size: 26px;
+}
+.computer-test.ct-size-large {
+  --ct-font: 19px;
+}
+.computer-test.ct-size-extra {
+  --ct-font: 22px;
+}
+
+
+.computer-test.ct-contrast-white-black .ct-own-brand {
+  color: var(--ct-fg);
+}
+.computer-test.ct-contrast-yellow-black .ct-own-brand {
+  color: var(--ct-fg);
+}
+.computer-test.ct-contrast-white-black input[type="checkbox"],
+.computer-test.ct-contrast-white-black input[type="radio"] {
+  accent-color: var(--ct-fg);
+}
+.computer-test.ct-contrast-yellow-black input[type="checkbox"],
+.computer-test.ct-contrast-yellow-black input[type="radio"] {
+  accent-color: var(--ct-fg);
+}
+@media (max-width: 900px) {
+  .computer-test .ct-header {
+    gap: 17px;
+    padding: 10px 14px;
+  }
+  .computer-test .ct-header-tools {
+    gap: 13px;
+  }
+  .computer-test .ct-volume input {
+    width: 45px;
+  }
+  .computer-test .ct-instruction {
+    margin-top: 20px;
+  }
+  .computer-test .ct-reading-passage {
+    padding-right: 18px;
+  }
+  .computer-test .ct-reading .ct-questions {
+    padding-left: 18px;
+  }
+  .computer-test .ct-notes {
+    position: absolute;
+    right: 0;
+    top: 65px;
+    bottom: 56px;
+    z-index: 7;
+    width: 300px;
+    max-width: 80vw;
+    box-shadow: -3px 0 10px var(--vg-color-overlay);
+  }
+  .computer-test .ct-part {
+    gap: 14px;
+    padding-left: 14px;
+  }
+  .computer-test .ct-answer-count {
+    margin: 0 12px;
+    align-self: center;
+  }
+  .computer-test .ct-step-controls {
+    padding-right: 12px;
+  }
+  .computer-test .ct-step-controls button {
+    width: 43px;
+    height: 43px;
+  }
+}
+@media (max-width: 600px) {
+  .computer-test {
+    --ct-font: 15px;
+  }
+  .computer-test .ct-header {
+    gap: 12px;
+    min-height: 61px;
+    padding: 8px 10px;
+  }
+  .computer-test .ct-own-brand {
+    font-size: 20px;
+  }
+  .computer-test .ct-test-taker > strong {
+    font-size: 13px;
+  }
+  .computer-test .ct-test-taker > span {
+    font-size: 11px;
+  }
+  .computer-test .ct-header-tools {
+    gap: 8px;
+  }
+  .computer-test .ct-header-tools > button > svg {
+    width: 21px;
+  }
+  .computer-test .ct-volume {
+    display: none;
+  }
+  .computer-test .ct-countdown {
+    font-size: 13px;
+  }
+  .computer-test .ct-instruction {
+    margin: 17px 10px 0;
+    padding: 9px 12px;
+  }
+  .computer-test .ct-questions {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  .computer-test .ct-reading-passage {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .computer-test .ct-reading .ct-questions {
+    padding-left: 12px;
+  }
+  .computer-test .ct-panes.ct-reading {
+    overflow: auto;
+  }
+  .computer-test .ct-reading-passage {
+    min-width: 240px;
+  }
+  .computer-test .ct-reading .ct-question-column {
+    min-width: 240px;
+  }
+  .computer-test .ct-reading .ct-divider {
+    display: none;
+  }
+  .computer-test .ct-part {
+    padding-left: 9px;
+    gap: 10px;
+  }
+  .computer-test .ct-part > strong {
+    font-size: 13px;
+  }
+  .computer-test .ct-question-numbers > button {
+    padding: 4px;
+    min-width: 23px;
+    font-size: 14px;
+  }
+  .computer-test .ct-answer-count {
+    display: none;
+  }
+  .computer-test button.ct-review-submit {
+    width: 49px;
+    min-width: 49px;
+    margin-left: auto;
+  }
+  .computer-test .ct-setup {
+    padding: 22px 18px;
+  }
+  .computer-test .ct-setup > main {
+    margin-top: 30px;
+  }
+  .computer-test .ct-setup h1 {
+    font-size: 28px;
+  }
+  .computer-test .ct-setup-title {
+    font-size: 17px;
+  }
+  .computer-test .ct-time-choice {
+    padding: 13px 15px;
+  }
+  .computer-test .ct-setup-actions {
+    justify-content: flex-start;
+  }
+  .computer-test .ct-setup-actions > button:first-child {
+    margin: 0;
+  }
+  .computer-test .ct-submission,
+  .computer-test .ct-complete {
+    padding: 30px 22px 55px;
+  }
+  .computer-test .ct-review-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .computer-test .ct-options-center {
+    margin-top: 105px;
+  }
+  .computer-test .ct-options-center h1 {
+    font-size: 28px;
+  }
+  .computer-test .ct-option-choices button {
+    font-size: 16px;
+  }
+  .computer-test .ct-rich td,
+  .computer-test .ct-rich th {
+    padding: 7px;
+  }
+  .computer-test input.ct-gap {
+    width: 100px;
+  }
+  .computer-test .ct-footer {
+    height: 53px;
+    min-height: 53px;
+  }
+}
+.computer-test .ct-conflict-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background: var(--ct-bg);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 28px;
+}
+.computer-test .ct-conflict-screen > div {
+  max-width: 650px;
+}
+.computer-test .ct-conflict-screen h1 {
+  font-size: 28px;
+}
+.computer-test .ct-conflict-screen p {
+  line-height: 1.8;
+  margin: 25px 0;
+}
+.computer-test .ct-conflict-screen button {
+  margin: 10px 12px 0 0;
+}
+.computer-test .ct-track-label {
+  font-size: 11px;
+  color: var(--ct-muted);
+  font-weight: 700;
+  line-height: 1.4;
+}
+.computer-test .ct-track-note {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+.computer-test .ct-source-label {
+  font-size: 11px;
+  border: 1px solid var(--ct-line);
+  padding: 2px 7px;
+  font-weight: 400;
+  color: var(--ct-muted);
+}
+
+/* Shared footer pattern observed in the official familiarisation screenshot. */
+.computer-test.ct-paper-mode .ct-footer {
+  min-height: 56px;
+  height: 56px;
+}
+.computer-test .ct-paper-navigation {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: stretch;
+  justify-content: space-between;
+  overflow-x: auto;
+}
+.computer-test .ct-nav-part {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 18px;
+  padding: 0 17px;
+  min-width: 130px;
+}
+.computer-test .ct-nav-part-expanded {
+  flex-grow: 2;
+  min-width: 280px;
+}
+.computer-test button.ct-part-heading {
+  flex-shrink: 0;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  white-space: nowrap;
+  gap: 14px;
+  font-size: 16px;
+}
+.computer-test .ct-part-heading strong {
+  font-weight: 400;
+}
+.computer-test .ct-nav-part-expanded .ct-part-heading strong {
+  font-weight: 700;
+}
+.computer-test .ct-part-heading span {
+  color: var(--ct-muted);
+  font-size: 14px;
+}
+.computer-test .ct-question-numbers[hidden] {
+  display: none;
+}
+.computer-test .ct-nav-part .ct-question-numbers {
+  overflow-x: auto;
+  min-width: 0;
+  padding: 0 2px;
+}
+.computer-test .ct-help {
+  text-align: left;
+  line-height: 1.6;
+}
+.computer-test .ct-help dt {
+  font-weight: 700;
+  margin-top: 20px;
+}
+.computer-test .ct-help dd {
+  margin: 4px 0 0;
+}
+.computer-test .ct-reading-passage:focus-visible,
+.computer-test .ct-questions:focus-visible {
+  outline: 2px solid var(--ct-focus);
+  outline-offset: -3px;
+}
+.computer-test .ct-divider {
+  touch-action: none;
+}
+.computer-test .ct-divider:focus-visible {
+  outline: 2px solid var(--ct-focus);
+  outline-offset: -2px;
+}
+.computer-test .ct-short-demo {
+  display: inline-block;
+  margin: 5px 14px 0 0;
+  font-size: 12px;
+  color: var(--ct-muted);
+}
+.computer-test .ct-paper-notice {
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 10px 12px;
+  background: var(--ct-panel);
+}
+@media (max-width: 900px) {
+  .computer-test.ct-paper-mode .ct-notes {
+    bottom: 56px;
+  }
+}
+
+@media (max-width: 900px) {
+  .computer-test .ct-nav-part {
+    min-width: 120px;
+    padding: 0 12px;
+    gap: 12px;
+  }
+  .computer-test .ct-nav-part-expanded {
+    min-width: 260px;
+  }
+}
+
+/* Keep the desktop frame aligned with the writing familiarisation view. */
+@media (min-width: 901px) {
+  .computer-test .ct-header {
+    height: 56px;
+    min-height: 56px;
+    padding: 4px 16px;
+  }
+  .computer-test .ct-test-taker > strong {
+    font-size: 16px;
+    line-height: 18px;
+  }
+  .computer-test .ct-track-label {
+    font-size: 10px;
+    line-height: 12px;
+  }
+  .computer-test .ct-test-taker > span {
+    min-height: 16px;
+    font-size: 13px;
+    line-height: 16px;
+  }
+  .computer-test .ct-instruction {
+    margin: 16px 16px 0;
+    padding: 10px 16px;
+  }
+  .computer-test .ct-footer,
+  .computer-test.ct-paper-mode .ct-footer {
+    height: 54px;
+    min-height: 54px;
+  }
+}

@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildGroups, gradeGroups } from "../src/lib/questions.mjs";
+import { buildGroups, gradeGroups } from "../apps/web/src/lib/questions.mjs";
 import {
   matchingMatrix,
   paperParts,
   answersForPart,
-} from "../src/lib/computer-test.mjs";
+} from "../apps/web/src/lib/computer-test.mjs";
 
 // Original examples exercise the observed interaction structure, not official questions.
 function question(

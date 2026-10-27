@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createApp } from "../server/index.mjs";
-import { loadLibrary } from "../server/library.mjs";
+import { createApp } from "../services/api/index.mjs";
+import { loadLibrary } from "../services/api/library.mjs";
 
 async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "ielts-paper-test-"));
@@ -15,7 +15,7 @@ async function fixture(t) {
   const media = path.join(archive, "data/media", mediaRelative);
   await fs.mkdir(path.dirname(media), { recursive: true });
   await fs.copyFile(
-    new URL("../server/assets/demo-listening.wav", import.meta.url),
+    new URL("../services/api/assets/demo-listening.wav", import.meta.url),
     media,
   );
   const source = "https://example.invalid/original.wav";
@@ -213,7 +213,7 @@ test("removed or symlink-redirected audio makes an already loaded paper unavaila
   assert.ok(detail.issues.some((issue) => issue.includes("本地音频")));
   const outside = path.join(f.root, "outside.wav");
   await fs.copyFile(
-    new URL("../server/assets/demo-listening.wav", import.meta.url),
+    new URL("../services/api/assets/demo-listening.wav", import.meta.url),
     outside,
   );
   await fs.symlink(outside, f.media);
@@ -312,7 +312,7 @@ test("original short paper is available in both modes and never masquerades as f
       Buffer.from(await audio.arrayBuffer()),
       (
         await fs.readFile(
-          new URL("../server/assets/demo-listening.wav", import.meta.url),
+          new URL("../services/api/assets/demo-listening.wav", import.meta.url),
         )
       ).subarray(0, 12),
     );
