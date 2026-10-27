@@ -116,7 +116,7 @@ def prepare_image(role, requested_digest, sha, stage):
             run(['skopeo', '--override-os', 'linux', '--override-arch', 'amd64', 'copy',
                  '--retry-times', '2', f'docker://{repository}@{selected_digest}',
                  f'docker-archive:{archive}'], stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE, timeout=300)
+                stderr=subprocess.PIPE, timeout=1200)
             os.chmod(archive, 0o600)
             run(['docker', 'load', '--input', str(archive)], stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, timeout=180)
