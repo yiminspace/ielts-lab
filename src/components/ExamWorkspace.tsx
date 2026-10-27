@@ -474,6 +474,23 @@ function ExamSession({
       (audioTime < line.end || i === lines.length - 1),
   );
   const src = mediaUrl(item, data.audioUrl);
+  useEffect(() => {
+    const player = audio.current;
+    if (!listening || saved.submitted || !src || !player) return;
+    let cancelled = false;
+    void player.play().catch((error: unknown) => {
+      if (cancelled) return;
+      setAudioError(
+        error instanceof DOMException && error.name === "NotAllowedError"
+          ? "浏览器阻止了自动播放，请点击播放按钮开始听力。"
+          : "播放未能启动，请点击音频控件重试。",
+      );
+    });
+    return () => {
+      cancelled = true;
+      player.pause();
+    };
+  }, [listening, saved.submitted, src]);
   const completed = rows.filter((r) => {
     const v = answers[r.id];
     return Array.isArray(v) ? v.some(Boolean) : !!v?.trim();
@@ -607,6 +624,7 @@ function ExamSession({
   function playLine(index: number, questionId: string | null = null) {
     const line = lines[index];
     if (!line || !audio.current) return;
+    if (questionId !== null) setLoop(false);
     setPlaybackQuestion(questionId);
     setSelectedLine(index);
     audio.current.currentTime = line.start;
@@ -617,7 +635,15 @@ function ExamSession({
   function tickAudio() {
     const player = audio.current;
     if (!player) return;
+    const line = selectedLine !== null ? lines[selectedLine] : null;
+    if (playbackQuestion !== null && line && player.currentTime >= line.end) {
+      player.pause();
+      player.currentTime = line.end;
+      setAudioPlaying(false);
+      setPlaybackQuestion(null);
+    }
     if (
+      playbackQuestion === null &&
       loop &&
       selectedLine !== null &&
       lines[selectedLine] &&
@@ -626,6 +652,13 @@ function ExamSession({
       player.currentTime = lines[selectedLine].start;
     setAudioTime(player.currentTime);
   }
+  // timeupdate can be several hundred milliseconds apart. Check question clips
+  // more frequently so they stop at the sentence boundary, including at 2×.
+  useEffect(() => {
+    if (!audioPlaying || playbackQuestion === null) return;
+    const timer = window.setInterval(tickAudio, 25);
+    return () => window.clearInterval(timer);
+  }, [audioPlaying, playbackQuestion, selectedLine, lines, loop]);
   function submit() {
     if (submitted) return;
     const result = gradeGroups(groups, answers);
@@ -1196,7 +1229,10 @@ function ExamSession({
                 controls
                 preload="metadata"
                 onTimeUpdate={tickAudio}
-                onPlay={() => setAudioPlaying(true)}
+                onPlay={() => {
+                  setAudioPlaying(true);
+                  setAudioError("");
+                }}
                 onPause={() => setAudioPlaying(false)}
                 onLoadedMetadata={() => {
                   if (audio.current) {
@@ -1211,7 +1247,7 @@ function ExamSession({
                 }
                 onEnded={() => {
                   setAudioPlaying(false);
-                  if (loop && selectedLine !== null)
+                  if (playbackQuestion === null && loop && selectedLine !== null)
                     playLine(selectedLine, playbackQuestion);
                 }}
               />
