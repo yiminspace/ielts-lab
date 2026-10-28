@@ -59,6 +59,11 @@ def build_app(
 
     app.router.lifespan_context = lifespan
 
+    @app.get("/health")
+    async def version_health():
+        # The runtime's middleware protects this route; /healthz remains public liveness.
+        return {"status": "ok", "service": "ielts-learning", "version": os.getenv("GIT_SHA", "dev")}
+
     def authorize(request: Request):
         supplied = request.headers.get("authorization", "")
         if not hmac.compare_digest(supplied, "Bearer " + token):

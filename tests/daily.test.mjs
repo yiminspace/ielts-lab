@@ -6,6 +6,7 @@ import os from "node:os";
 import { Readable } from "node:stream";
 import { randomUUID } from "node:crypto";
 import { createApp } from "../services/api/index.mjs";
+import { createDailyAudio } from "../services/api/daily-audio.mjs";
 import { PostgresStore } from "../services/api/postgres.mjs";
 import { loadLibrary } from "../services/api/library.mjs";
 import {
@@ -924,5 +925,39 @@ test("local enqueue failure preserves the attempt and keeps the submission retry
   assert.equal(
     (await (await fetch(url + "/api/daily")).json()).lessons.length,
     1,
+  );
+});
+
+test("teacher audio committed before a crash is reused without another synthesis", async (t) => {
+  const { service, runtime, library, root } = await fixture(t);
+  const seed = await service.ensure(owner, attempt());
+  let lesson = await completed(service, seed.id);
+  const requestId = randomUUID();
+  lesson = await service.action(owner, seed.id, "speech", {
+    expectedVersion: lesson.version,
+    requestId,
+    messageId: lesson.conversation.messages[0].id,
+  });
+  const audio = createDailyAudio(path.join(root, "audio"));
+  const saved = await audio.save(
+    owner,
+    library.mode,
+    seed.id,
+    requestId,
+    "teacher",
+    "audio/wav",
+    [Buffer.from("original-already-generated-audio")],
+  );
+  runtime.synthesize = async () => {
+    throw new Error("Synthesis must not run again after the file committed");
+  };
+  lesson = await completed(service, seed.id, (value) => !value.pending);
+  const file = await service.audio(owner, seed.id, saved.id);
+  assert.equal(
+    (await fs.readFile(file.target)).toString(),
+    "original-already-generated-audio",
+  );
+  assert.ok(
+    lesson.conversation.messages[0].audioUrl.endsWith(`${saved.id}/audio`),
   );
 });

@@ -685,19 +685,30 @@ export function createDaily({
             value.id === pending.messageId && value.role === "assistant",
         );
         if (!message) throw failure(502, "老师消息不存在");
-        const output = await runtime.synthesize(
-          userId,
-          [message.text, message.followUp].filter(Boolean).join("\n"),
-        );
-        const asset = await audio.save(
+        // A crash may leave the committed audio file before the lesson metadata is written.
+        // Reuse it rather than synthesize different bytes under the same immutable request ID.
+        let asset = await audio.existing(
           userId,
           mode,
           lesson.id,
           key,
           "teacher",
-          output.contentType,
-          [output.bytes],
         );
+        if (!asset) {
+          const output = await runtime.synthesize(
+            userId,
+            [message.text, message.followUp].filter(Boolean).join("\n"),
+          );
+          asset = await audio.save(
+            userId,
+            mode,
+            lesson.id,
+            key,
+            "teacher",
+            output.contentType,
+            [output.bytes],
+          );
+        }
         await commit((value) => {
           if (value.pending?.requestId !== key) return null;
           const saved = value.conversation.messages.find(

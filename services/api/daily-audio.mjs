@@ -42,6 +42,45 @@ export function createDailyAudio(root) {
     return canonicalTarget;
   }
   return {
+    async existing(owner, mode, lessonId, requestId, kind) {
+      const id = `${kind}-${createHash("sha256").update(`${lessonId}:${requestId}`).digest("hex").slice(0, 32)}`;
+      const dir = await directory(owner, mode, lessonId);
+      const files = (await fs.readdir(dir)).filter((name) =>
+        name.startsWith(`${id}.`),
+      );
+      if (!files.length) return null;
+      if (files.length !== 1)
+        throw fail(409, "同一语音请求存在冲突文件，请保留记录并检查");
+      const filename = files[0];
+      const extension = path.extname(filename).slice(1);
+      const contentType = {
+        webm: "audio/webm",
+        ogg: "audio/ogg",
+        m4a: "audio/mp4",
+        mp3: "audio/mpeg",
+        wav: "audio/wav",
+      }[extension];
+      if (!contentType) throw fail(403, "音频格式不被允许");
+      const handle = await fs.open(
+        path.join(dir, filename),
+        constants.O_RDONLY | constants.O_NOFOLLOW,
+      );
+      try {
+        const stat = await handle.stat();
+        if (!stat.isFile() || stat.size <= 0 || stat.size > maximum)
+          throw fail(403, "音频文件不被允许");
+        const bytes = await handle.readFile();
+        return {
+          id,
+          filename,
+          contentType,
+          size: bytes.length,
+          checksum: createHash("sha256").update(bytes).digest("hex"),
+        };
+      } finally {
+        await handle.close();
+      }
+    },
     async save(owner, mode, lessonId, requestId, kind, contentType, iterable) {
       const normalized = contentType.split(";")[0].trim().toLowerCase();
       const extension = types.get(normalized);

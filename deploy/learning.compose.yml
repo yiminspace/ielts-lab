@@ -7,9 +7,14 @@ services:
       IELTS_RUNTIME_URL: http://ielts-learning:4320
       DAILY_ROOT: /data/daily
     volumes:
-      - ielts-daily:/data/daily
+      - type: bind
+        source: ./data/daily
+        target: /data/daily
+        bind:
+          create_host_path: false
     networks: [web-proxy, learning]
   ielts-learning:
+    container_name: ielts-learning
     image: ${IELTS_LEARNING_IMAGE:?Set an immutable learning image reference}
     restart: unless-stopped
     env_file: learning.env
@@ -18,8 +23,12 @@ services:
       PORT: "4320"
       RUNTIME_DATABASE: /data/runtime/runtime.sqlite
     volumes:
-      - ielts-runtime:/data/runtime
-    networks: [learning]
+      - type: bind
+        source: ./data/runtime
+        target: /data/runtime
+        bind:
+          create_host_path: false
+    networks: [learning, web-proxy]
     read_only: true
     tmpfs: ["/tmp:size=32m,noexec,nosuid"]
     cap_drop: [ALL]
@@ -27,6 +36,3 @@ services:
     mem_limit: 512m
 networks:
   learning:
-volumes:
-  ielts-daily:
-  ielts-runtime:

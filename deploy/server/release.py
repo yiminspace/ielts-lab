@@ -34,6 +34,7 @@ def run(args, **kwargs):
 REPOSITORIES = {
     'api': 'ghcr.io/yiminspace/ielts-api',
     'web': 'ghcr.io/yiminspace/ielts-web',
+    'learning': 'ghcr.io/yiminspace/ielts-learning',
 }
 SOURCE_LABEL = 'https://github.com/yiminspace/ielts-lab'
 
@@ -227,7 +228,11 @@ def rollback_images(previous):
     if not isinstance(sha, str) or not re.fullmatch(r'[0-9a-f]{40}', sha):
         raise ValueError('Previous release version is invalid')
     images = {}
-    for role, repository in REPOSITORIES.items():
+    roles = ['api', 'web'] + (['learning'] if 'learning' in previous else [])
+    if 'learningImageId' in previous and 'learning' not in previous:
+        raise ValueError('Previous learning release source is missing')
+    for role in roles:
+        repository = REPOSITORIES[role]
         requested = previous.get(role)
         prefix = repository + '@'
         if (not isinstance(requested, str) or not requested.startswith(prefix) or
@@ -250,65 +255,212 @@ def write_private(path, data):
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(descriptor, 'wb') as output: output.write(data)
 
+CONFIG_FILES = ('runtime.env', 'api-learning.env', 'learning.env')
+STATE_FILES = (*CONFIG_FILES, '.env', 'release.json')
+
+
+def parse_invocation(arguments):
+    if len(arguments) == 3:
+        api, web, sha = arguments
+        requested = {'api': api, 'web': web}
+    elif len(arguments) == 4:
+        api, web, learning, sha = arguments
+        requested = {'api': api, 'web': web, 'learning': learning}
+    else:
+        raise ValueError('Invalid release invocation')
+    if (not re.fullmatch(r'[0-9a-f]{40}', sha) or
+            any(not DIGEST.fullmatch(value) for value in requested.values())):
+        raise ValueError('Invalid immutable image references')
+    return requested, sha
+
+
+def receive_configurations(payload, stage, with_learning):
+    expected = {'runtime.env', 'migration.env'}
+    if with_learning:
+        expected |= {'api-learning.env', 'learning.env'}
+    with tarfile.open(fileobj=io.BytesIO(payload), mode='r:') as archive:
+        members = archive.getmembers()
+        if len(members) != len(expected) or {item.name for item in members} != expected:
+            raise ValueError('Unexpected deployment payload')
+        for item in members:
+            if not item.isfile() or not 0 < item.size <= 256 * 1024:
+                raise ValueError('Only bounded regular configuration files are accepted')
+            raw = archive.extractfile(item).read()
+            if len(raw) != item.size:
+                raise ValueError('Configuration payload was truncated')
+            write_private(stage / item.name, raw)
+
+
+def snapshot_state(stage):
+    backup = stage / 'previous'
+    backup.mkdir(mode=0o700)
+    existing = set()
+    for name in STATE_FILES:
+        current = BASE / name
+        if current.is_symlink() or (current.exists() and not current.is_file()):
+            raise ValueError('Deployment state must consist of regular files')
+        if current.exists():
+            if current.stat().st_size > 256 * 1024:
+                raise ValueError('Previous deployment state exceeds its limit')
+            shutil.copyfile(current, backup / name)
+            os.chmod(backup / name, 0o600)
+            existing.add(name)
+    return existing
+
+
+def restore_state(stage, existing):
+    for name in STATE_FILES:
+        destination = BASE / name
+        if name in existing:
+            os.replace(stage / 'previous' / name, destination)
+            os.chmod(destination, 0o600)
+        elif destination.is_symlink() or destination.is_file():
+            destination.unlink()
+        elif destination.exists():
+            raise ValueError('Cannot restore unexpected deployment state')
+
+
+def persistent_directories():
+    data = BASE / 'data'
+    if data.is_symlink() or (data.exists() and not data.is_dir()):
+        raise ValueError('Persistent data parent must be a regular directory')
+    data.mkdir(mode=0o700, exist_ok=True)
+    for name, owner in [('daily', 1000), ('runtime', 10001)]:
+        directory = data / name
+        if directory.is_symlink() or (directory.exists() and not directory.is_dir()):
+            raise ValueError('Persistent data must not be a symlink')
+        directory.mkdir(mode=0o700, exist_ok=True)
+        os.chmod(directory, 0o700)
+        os.chown(directory, owner, owner)
+
+
+def compose_command(images):
+    arguments = ['docker', 'compose', '-f', str(BASE / 'compose.yml')]
+    if 'IELTS_LEARNING_IMAGE' in images:
+        overlay = BASE / 'learning.compose.yml'
+        if overlay.is_symlink() or not overlay.is_file():
+            raise ValueError('Trusted learning deployment overlay is not installed')
+        arguments += ['-f', str(overlay)]
+    return arguments
+
+
+def stop_learning():
+    # Remove only the fixed container. Its private bind-mounted data stays intact.
+    try:
+        run(['docker', 'rm', '--force', 'ielts-learning'],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+    except subprocess.CalledProcessError as error:
+        if b'No such container' not in (error.stderr or b''):
+            raise
+
+
+def verify_health(sha, with_learning):
+    for container, port in [('ielts-api', 4318), ('ielts-web', 4317)]:
+        script = f"fetch('http://127.0.0.1:{port}/health').then(async r=>{{const b=await r.json();if(!r.ok||b.version!==process.argv[1])process.exit(1)}}).catch(()=>process.exit(1))"
+        run(['docker', 'exec', container, 'node', '-e', script, sha],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+    if with_learning:
+        script = """import json, os, sys, urllib.request, urllib.error
+base = 'http://127.0.0.1:4320'
+with urllib.request.urlopen(base + '/healthz', timeout=10) as response:
+    if response.status != 200:
+        raise SystemExit(1)
+request = urllib.request.Request(base + '/health', headers={
+    'Authorization': 'Bearer ' + os.environ['IELTS_RUNTIME_TOKEN']})
+with urllib.request.urlopen(request, timeout=10) as response:
+    body = json.load(response)
+    if response.status != 200 or body.get('version') != sys.argv[1]:
+        raise SystemExit(1)
+try:
+    urllib.request.urlopen(base + '/health', timeout=10)
+except urllib.error.HTTPError as error:
+    if error.code != 401:
+        raise SystemExit(1)
+else:
+    raise SystemExit(1)
+"""
+        run(['docker', 'exec', 'ielts-learning', 'python', '-c', script, sha],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=40)
+
+
 def main():
-    if os.geteuid() != 0 or len(sys.argv) != 4: raise ValueError('Invalid release invocation')
-    api, web, sha = sys.argv[1:]
-    if not DIGEST.fullmatch(api) or not DIGEST.fullmatch(web) or not re.fullmatch(r'[0-9a-f]{40}', sha): raise ValueError('Invalid immutable image references')
-    if not BASE.is_dir() or BASE.is_symlink() or not (BASE/'compose.yml').is_file(): raise ValueError('Trusted deployment directory is not installed')
-    with open(BASE/'.maintenance.lock', 'a') as maintenance:
-        os.chmod(BASE/'.maintenance.lock', 0o600)
+    if os.geteuid() != 0:
+        raise ValueError('Invalid release invocation')
+    requested, sha = parse_invocation(sys.argv[1:])
+    with_learning = 'learning' in requested
+    compose_file = BASE / 'compose.yml'
+    if (not BASE.is_dir() or BASE.is_symlink() or
+            compose_file.is_symlink() or not compose_file.is_file()):
+        raise ValueError('Trusted deployment directory is not installed')
+    with open(BASE / '.maintenance.lock', 'a') as maintenance:
+        os.chmod(BASE / '.maintenance.lock', 0o600)
         fcntl.flock(maintenance, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        def receive_timeout(signum, frame): raise TimeoutError('Release payload timed out')
-        signal.signal(signal.SIGALRM, receive_timeout); signal.alarm(15)
-        try: payload = sys.stdin.buffer.read(1024*1024+1)
-        finally: signal.alarm(0)
-        if len(payload) > 1024*1024: raise ValueError('Configuration payload exceeds limit')
+        def receive_timeout(signum, frame):
+            raise TimeoutError('Release payload timed out')
+        signal.signal(signal.SIGALRM, receive_timeout)
+        signal.alarm(15)
+        try:
+            payload = sys.stdin.buffer.read(1024 * 1024 + 1)
+        finally:
+            signal.alarm(0)
+        if len(payload) > 1024 * 1024:
+            raise ValueError('Configuration payload exceeds limit')
         with tempfile.TemporaryDirectory(prefix='ielts-release-', dir=BASE) as temporary:
-            stage = Path(temporary); os.chmod(stage, 0o700)
-            with tarfile.open(fileobj=io.BytesIO(payload), mode='r:') as archive:
-                members = archive.getmembers()
-                if len(members) != 2 or {item.name for item in members} != {'runtime.env','migration.env'}: raise ValueError('Unexpected deployment payload')
-                for item in members:
-                    if not item.isfile() or item.size > 256*1024: raise ValueError('Only bounded regular configuration files are accepted')
-                    write_private(stage/item.name, archive.extractfile(item).read())
+            stage = Path(temporary)
+            os.chmod(stage, 0o700)
+            receive_configurations(payload, stage, with_learning)
             spec = importlib.util.spec_from_file_location('ielts_validate', '/usr/local/lib/ielts-lab/validate-env.py')
-            module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
-            module.validate(module.read_env(stage/'runtime.env'), module.read_env(stage/'migration.env'))
-            api_artifact = prepare_image('api', api, sha, stage)
-            web_artifact = prepare_image('web', web, sha, stage)
-            api_image = api_artifact['imageId']
-            web_image = web_artifact['imageId']
-            run(['docker','run','--rm','--pull','never','--network','web-proxy','--env-file',str(stage/'migration.env'),
-                 '--read-only','--cap-drop','ALL','--security-opt','no-new-privileges:true',api_image,
-                 'node','services/api/scripts/migrate.mjs','up'])
-            previous = BASE/'runtime.env'
-            if previous.exists():
-                if previous.is_symlink() or not previous.is_file(): raise ValueError('Runtime configuration must be a regular file')
-                shutil.copyfile(previous, stage/'previous.env'); os.chmod(stage/'previous.env',0o600)
-            os.replace(stage/'runtime.env', previous); os.chmod(previous,0o600)
-            images = {'IELTS_API_IMAGE':api_image,'IELTS_WEB_IMAGE':web_image}
-            compose = ['docker','compose','-f',str(BASE/'compose.yml')]
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            configurations = [module.read_env(stage / 'runtime.env'), module.read_env(stage / 'migration.env')]
+            if with_learning:
+                configurations += [module.read_env(stage / 'api-learning.env'), module.read_env(stage / 'learning.env')]
+            module.validate(*configurations)
+            # Validate all image sources before a migration or active config change.
+            artifacts = {role: prepare_image(role, value, sha, stage) for role, value in requested.items()}
+            images = {'IELTS_' + role.upper() + '_IMAGE': artifact['imageId'] for role, artifact in artifacts.items()}
+            compose = compose_command(images)
+            existing = snapshot_state(stage)
+            previous = json.loads((stage / 'previous' / 'release.json').read_text()) if 'release.json' in existing else None
+            # A rollback is prepared in advance; databases and schema are never rolled back.
+            restored_images = rollback_images(previous) if previous is not None else None
+            if with_learning:
+                persistent_directories()
+            run(['docker', 'run', '--rm', '--pull', 'never', '--network', 'web-proxy',
+                 '--env-file', str(stage / 'migration.env'), '--read-only', '--cap-drop', 'ALL',
+                 '--security-opt', 'no-new-privileges:true', images['IELTS_API_IMAGE'],
+                 'node', 'services/api/scripts/migrate.mjs', 'up'])
             try:
-                run([*compose,'up','-d','--no-build','--pull','never','--wait','--wait-timeout','120'],env=images)
-                for container, port in [('ielts-api',4318),('ielts-web',4317)]:
-                    script = f"fetch('http://127.0.0.1:{port}/health').then(async r=>{{const b=await r.json();if(!r.ok||b.version!==process.argv[1])process.exit(1)}}).catch(()=>process.exit(1))"
-                    run(['docker','exec',container,'node','-e',script,sha])
+                active_names = CONFIG_FILES if with_learning else ('runtime.env',)
+                for name in CONFIG_FILES:
+                    destination = BASE / name
+                    if name in active_names:
+                        os.replace(stage / name, destination)
+                        os.chmod(destination, 0o600)
+                    elif destination.exists():
+                        destination.unlink()
+                if not with_learning:
+                    stop_learning()
+                run([*compose, 'up', '-d', '--no-build', '--pull', 'never', '--wait', '--wait-timeout', '120'], env=images)
+                verify_health(sha, with_learning)
+                # Fixed immutable pointers allow restart without access to CI.
+                content = ''.join(f'{key}={value}\n' for key, value in images.items()).encode()
+                write_private(stage / 'images.env', content)
+                os.replace(stage / 'images.env', BASE / '.env')
+                manifest = {'version': sha, 'deployedAt': int(time.time())}
+                for role, artifact in artifacts.items():
+                    manifest[role] = artifact['requested']
+                    manifest[role + 'ImageId'] = artifact['imageId']
+                write_private(stage / 'release.json', (json.dumps(manifest) + '\n').encode())
+                os.replace(stage / 'release.json', BASE / 'release.json')
             except Exception:
-                if (stage/'previous.env').exists():
-                    os.replace(stage/'previous.env',previous)
-                    # Application rollback assumes the migration remains backward compatible.
-                    if (BASE/'release.json').is_file():
-                        old = json.loads((BASE/'release.json').read_text())
-                        restored_images = rollback_images(old)
-                        run([*compose,'up','-d','--no-build','--pull','never','--wait','--wait-timeout','120'],env=restored_images)
+                restore_state(stage, existing)
+                if restored_images is not None:
+                    if 'IELTS_LEARNING_IMAGE' not in restored_images:
+                        stop_learning()
+                    old_compose = compose_command(restored_images)
+                    run([*old_compose, 'up', '-d', '--no-build', '--pull', 'never', '--wait', '--wait-timeout', '120'], env=restored_images)
                 raise
-            # Fixed image pointers permit restart after host reboot without access to CI.
-            image_file = BASE/'.env'
-            content = ''.join(f'{key}={value}\n' for key,value in images.items()).encode()
-            write_private(stage/'images.env',content); os.replace(stage/'images.env',image_file)
-            manifest = {'version':sha,'api':api_artifact['requested'],'web':web_artifact['requested'],
-                        'apiImageId':api_image,'webImageId':web_image,'deployedAt':int(time.time())}
-            write_private(stage/'release.json',(json.dumps(manifest)+'\n').encode());os.replace(stage/'release.json',BASE/'release.json')
             print(f'IELTS release verified: {sha}')
 
 if __name__ == '__main__':

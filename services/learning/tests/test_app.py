@@ -16,6 +16,11 @@ def test_capabilities_and_speech_require_internal_auth_and_explicit_configuratio
     )
     with TestClient(app) as client:
         assert client.get("/capabilities").status_code == 401
+        assert client.get("/health").status_code == 401
+        version = client.get("/health", headers=AUTH)
+        assert version.status_code == 200
+        assert version.json()["service"] == "ielts-learning"
+        assert version.json()["version"]
         assert client.get("/capabilities", headers=AUTH).json() == {
             "model": False,
             "asr": False,

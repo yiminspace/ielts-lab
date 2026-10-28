@@ -44,13 +44,17 @@ runtime 在私有 SQLite 文件中保存任务、已完成步骤和追加事件�
 `deploy/learning.compose.yml` 是可选部署 overlay，不发布 Python 服务端口。Node 与 Python 使用一致的内部 token，
 网关密钥只放 `learning.env`，Node 的 `api-learning.env` 仅包含内部 token。
 
-构建不读取生产配置。独立构建工作流需要私有仓只读 token；生产配置仍由可信部署任务使用 IELTS 专属密钥解密。
-当前双镜像生产发布器尚未自动部署第三个 learning 镜像，不能直接把它描述为已上线。首次启用需安装此 overlay、
-私有配置和固定镜像，并扩展可信发布器；服务器只拉镜像，不构建。
+构建不读取生产配置。私有 `agent-runtime` 仓的 `consumer-image.yml` 用自身 GitHub Token 读取固定 runtime 提交，
+仅接受已进入 IELTS `main` 的完整提交 SHA；离线测试后构建 learning 镜像并返回不可变摘要。
+IELTS 的 `Release IELTS` 手动部署入口接收该摘要，构建同一主分支提交的 API/Web 镜像，再由受保护 production job
+解密四份 IELTS 专属配置、发布三个镜像。公共仓库不保存跨仓库个人令牌或私有源码工件。
 
-Daily 原始录音位于 `DAILY_ROOT` 下的私有音频目录；runtime SQLite 位于单独卷。
-现有生产备份脚本尚未覆盖这两个新增卷。首次线上启用前，需在停写窗口备份课程数据库、Daily 音频和 runtime 数据库，
-并进行恢复验证。旧备份继续可恢复旧功能，不能声称包含新课程音频与任务检查点。
+服务器只拉取并校验固定仓库、平台、提交及摘要；learning 没有公开端口。
+`data/daily` 与 `data/runtime` 绑定为独立私有目录。format2 备份同时停写 API/learning，捕获 PostgreSQL、
+Daily 音频和 SQLite/WAL；旧 format1 仍可恢复。发布和备份共用维护锁。
+
+首次 001→002 为新增表迁移，不删除旧记录；旧版 API 的严格 schema 检查不兼容回退至 schema2。
+因此首次升级先做完整备份，并在隔离服务验证受限数据库角色、同版镜像和真实生成链路；数据库不会自动降级。
 
 ## 验证
 

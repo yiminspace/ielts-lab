@@ -23,6 +23,7 @@ SHA = 'a' * 40
 OLD_SHA = 'b' * 40
 API_DIGEST = 'sha256:' + '1' * 64
 WEB_DIGEST = 'sha256:' + '2' * 64
+LEARNING_DIGEST = 'sha256:' + '3' * 64
 
 
 def encoded(value):
@@ -43,8 +44,10 @@ def raw_config(sha=SHA, role='api'):
 
 API_CONFIG = raw_config()
 WEB_CONFIG = raw_config(role='web')
+LEARNING_CONFIG = raw_config(role='learning')
 API_ID = digest(API_CONFIG)
 WEB_ID = digest(WEB_CONFIG)
+LEARNING_ID = digest(LEARNING_CONFIG)
 MANIFEST_ID = 'sha256:' + 'e' * 64
 
 
@@ -79,6 +82,7 @@ class ImageAcquisitionTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.stage = Path(self.temp.name)
         self.calls = []
+        self.role = 'api'
         self.leaf = encoded({'schemaVersion': 2, 'mediaType': 'application/vnd.oci.image.manifest.v1+json',
                              'config': {'digest': API_ID}, 'layers': []})
         self.leaf_digest = digest(self.leaf)
@@ -115,7 +119,7 @@ class ImageAcquisitionTests(unittest.TestCase):
             self.assertEqual(Path(args[-1]).stat().st_mode & 0o777, 0o600)
             self.loaded = True
         if args[:3] == ['docker', 'image', 'inspect']:
-            self.assertIn(args[-1], [self.cache_tag, release.REPOSITORIES['api'] + '@' + self.leaf_digest])
+            self.assertIn(args[-1], [self.cache_tag, release.REPOSITORIES[self.role] + '@' + self.leaf_digest])
             if not self.loaded:
                 raise subprocess.CalledProcessError(1, args, stderr=b'No such image')
             return subprocess.CompletedProcess(args, 0, stdout=encoded([self.observed]))
@@ -148,6 +152,16 @@ class ImageAcquisitionTests(unittest.TestCase):
         copy_call = next(args for args, _ in self.calls if args[0] == 'skopeo' and 'copy' in args)
         self.assertIn('docker://' + release.REPOSITORIES['api'] + '@' + self.leaf_digest, copy_call)
         self.assertTrue(copy_call[-1].endswith(':' + self.cache_tag))
+
+    def test_learning_source_uses_the_same_digest_config_and_platform_verification(self):
+        self.role = 'learning'
+        self.cache_tag = 'ielts-local/ielts-learning:sha256-' + API_ID[7:]
+        with self.commands():
+            result = release.prepare_image('learning', self.index_digest, SHA, self.stage)
+        self.assertEqual(result['requested'], release.REPOSITORIES['learning'] + '@' + self.index_digest)
+        reads = [args[-1] for args, _ in self.calls if args[:3] == ['skopeo', 'inspect', '--raw']]
+        self.assertTrue(all(value.startswith('docker://ghcr.io/yiminspace/ielts-learning@') for value in reads))
+        self.assertTrue(any(args[:3] == ['docker', 'image', 'save'] for args, _ in self.calls))
 
     def test_verified_cached_manifest_id_avoids_pull_and_copy_but_checks_remote_config(self):
         self.loaded = True
@@ -263,7 +277,7 @@ class ReleaseIntegrationTests(unittest.TestCase):
         (self.base / 'compose.yml').write_text('original synthetic compose fixture')
         self.calls = []
         self.payload = io.BytesIO()
-        contents = {
+        self.contents = {
             'runtime.env': '\n'.join([
                 'NODE_ENV=production', 'IELTS_AUTH_REQUIRED=1',
                 'PUBLIC_ORIGIN=https://ielts.yiminlab.site', 'AUTHKIT_API_URL=https://api.yiminlab.site',
@@ -273,7 +287,7 @@ class ReleaseIntegrationTests(unittest.TestCase):
             'migration.env': 'DATABASE_URL=postgres://ielts_app:synthetic@postgres/ielts_db\nMIGRATION_DATABASE_URL=postgres://ielts_migrator:synthetic@postgres/ielts_db\n',
         }
         with tarfile.open(fileobj=self.payload, mode='w:') as archive:
-            for name, text in contents.items():
+            for name, text in self.contents.items():
                 member = tarfile.TarInfo(name); member.size = len(text.encode()); archive.addfile(member, io.BytesIO(text.encode()))
         self.payload.seek(0)
 
@@ -281,21 +295,23 @@ class ReleaseIntegrationTests(unittest.TestCase):
         self.calls.append((args, kwargs))
         if args[:3] == ['docker','image','inspect']:
             requested = args[-1]
-            role = 'api' if 'ielts-api' in requested else 'web'
-            result = image(API_ID if role == 'api' else WEB_ID, requested=requested)
+            role = 'api' if 'ielts-api' in requested else 'learning' if 'ielts-learning' in requested else 'web'
+            result = image({'api': API_ID, 'web': WEB_ID, 'learning': LEARNING_ID}[role], requested=requested)
             return subprocess.CompletedProcess(args, 0, stdout=encoded([result]))
         return subprocess.CompletedProcess(args, 0, stdout=b'')
 
-    def invoke(self, command=None):
+    def invoke(self, command=None, learning=False):
         original_spec = importlib.util.spec_from_file_location
         def validator(name, path): return original_spec(name, ROOT / 'deploy/validate-env.py')
+        arguments = [API_DIGEST, WEB_DIGEST] + ([LEARNING_DIGEST] if learning else []) + [SHA]
         with mock.patch.object(release, 'BASE', self.base), mock.patch.object(release.os, 'geteuid', return_value=0), \
-             mock.patch.object(release.sys, 'argv', ['release.py',API_DIGEST,WEB_DIGEST,SHA]), \
+             mock.patch.object(release.os, 'chown'), \
+             mock.patch.object(release.sys, 'argv', ['release.py', *arguments]), \
              mock.patch.object(release.sys, 'stdin', types.SimpleNamespace(buffer=self.payload)), \
              mock.patch.object(release.signal, 'signal'), mock.patch.object(release.signal, 'alarm'), \
              mock.patch.object(release.importlib.util, 'spec_from_file_location', side_effect=validator), \
-             mock.patch.object(release, 'resolve_source', side_effect=lambda repository, requested: ('sha256:' + '5' * 64, API_ID if 'ielts-api' in repository else WEB_ID)), \
-             mock.patch.object(release.subprocess, 'Popen', side_effect=lambda args, **kwargs: export_process(saved_archive(API_CONFIG if args[-1] == API_ID else WEB_CONFIG))), \
+             mock.patch.object(release, 'resolve_source', side_effect=lambda repository, requested: ('sha256:' + '5' * 64, API_ID if 'ielts-api' in repository else LEARNING_ID if 'ielts-learning' in repository else WEB_ID)), \
+             mock.patch.object(release.subprocess, 'Popen', side_effect=lambda args, **kwargs: export_process(saved_archive(API_CONFIG if args[-1] == API_ID else LEARNING_CONFIG if args[-1] == LEARNING_ID else WEB_CONFIG))), \
              mock.patch.object(release, 'run', side_effect=command or self.command), contextlib.redirect_stdout(io.StringIO()):
             release.main()
 
@@ -335,6 +351,116 @@ class ReleaseIntegrationTests(unittest.TestCase):
             with self.assertRaises(ValueError):release.rollback_images(mutation)
         with mock.patch.object(release,'inspect_image',return_value=image(API_ID,SHA)):
             with self.assertRaises(ValueError):release.rollback_images(old)
+
+    def learning_payload(self):
+        (self.base / 'learning.compose.yml').write_text('original synthetic learning overlay')
+        token = 'synthetic-internal-learning-token-' * 2
+        self.contents.update({
+            'api-learning.env': 'IELTS_RUNTIME_URL=http://ielts-learning:4320\nIELTS_RUNTIME_TOKEN=' + token + '\nDAILY_ROOT=/data/daily\n',
+            'learning.env': 'IELTS_RUNTIME_TOKEN=' + token + '\nIELTS_LLM_BASE_URL=https://bifrost.yiminlab.site/v1\nIELTS_LLM_API_KEY=synthetic-model-key\nIELTS_MODEL=synthetic-model\nIELTS_ASR_MODEL=synthetic-asr\nIELTS_TTS_MODEL=synthetic-tts\nIELTS_TTS_VOICE=alloy\nRUNTIME_DATABASE=/data/runtime/runtime.sqlite\n',
+        })
+        self.payload = io.BytesIO()
+        with tarfile.open(fileobj=self.payload, mode='w:') as archive:
+            for name, text in self.contents.items():
+                member = tarfile.TarInfo(name); member.size = len(text.encode())
+                archive.addfile(member, io.BytesIO(text.encode()))
+        self.payload.seek(0)
+
+    def test_three_images_overlay_private_volumes_and_authenticated_health_are_pinned(self):
+        self.learning_payload()
+        self.invoke(learning=True)
+        stored = json.loads((self.base / 'release.json').read_text())
+        self.assertEqual(stored['learning'], release.REPOSITORIES['learning'] + '@' + LEARNING_DIGEST)
+        self.assertEqual(stored['learningImageId'], LEARNING_ID)
+        pointers = (self.base / '.env').read_text()
+        self.assertIn('IELTS_LEARNING_IMAGE=' + LEARNING_ID, pointers)
+        compose = next((args, kwargs) for args, kwargs in self.calls if args[:2] == ['docker', 'compose'])
+        self.assertIn(str(self.base / 'learning.compose.yml'), compose[0])
+        self.assertEqual(compose[1]['env']['IELTS_LEARNING_IMAGE'], LEARNING_ID)
+        for name in release.CONFIG_FILES:
+            self.assertEqual((self.base / name).stat().st_mode & 0o777, 0o600)
+        self.assertFalse((self.base / 'migration.env').exists())
+        for name in ['daily', 'runtime']:
+            self.assertEqual((self.base / 'data' / name).stat().st_mode & 0o777, 0o700)
+        health = next(args for args, _ in self.calls if args[:3] == ['docker', 'exec', 'ielts-learning'])
+        self.assertEqual(health[3:5], ['python', '-c'])
+        self.assertIn('4320', health[5]); self.assertIn("os.environ['IELTS_RUNTIME_TOKEN']", health[5])
+        self.assertIn("error.code != 401", health[5]); self.assertEqual(health[-1], SHA)
+        self.assertFalse(any('synthetic-internal-learning-token' in argument for argument in health))
+
+    def test_invalid_learning_image_aborts_before_database_or_configuration_changes(self):
+        self.learning_payload()
+        (self.base / 'runtime.env').write_text('previous runtime')
+        def command(args, **kwargs):
+            if args[:3] == ['docker', 'image', 'inspect'] and 'ielts-learning' in args[-1]:
+                wrong = image(LEARNING_ID, OLD_SHA, requested=args[-1])
+                self.calls.append((args, kwargs))
+                return subprocess.CompletedProcess(args, 0, stdout=encoded([wrong]))
+            return self.command(args, **kwargs)
+        with self.assertRaises(ValueError): self.invoke(command, learning=True)
+        self.assertEqual((self.base / 'runtime.env').read_text(), 'previous runtime')
+        self.assertFalse(any(args[:2] == ['docker', 'run'] for args, _ in self.calls))
+
+    def test_failed_three_image_health_restores_all_previous_configs_and_three_image_pointers(self):
+        self.learning_payload()
+        old_ids = {'api': 'sha256:' + '6' * 64, 'web': 'sha256:' + '7' * 64, 'learning': 'sha256:' + '8' * 64}
+        previous = {'version': OLD_SHA}
+        for role in old_ids:
+            previous[role] = release.REPOSITORIES[role] + '@' + {'api': API_DIGEST, 'web': WEB_DIGEST, 'learning': LEARNING_DIGEST}[role]
+            previous[role + 'ImageId'] = old_ids[role]
+        old_files = {name: 'previous-' + name for name in release.CONFIG_FILES}
+        old_files['.env'] = 'previous immutable pointers'
+        old_files['release.json'] = json.dumps(previous)
+        for name, content in old_files.items(): (self.base / name).write_text(content)
+        def command(args, **kwargs):
+            if args[:3] == ['docker', 'image', 'inspect'] and args[-1] in old_ids.values():
+                self.calls.append((args, kwargs))
+                return subprocess.CompletedProcess(args, 0, stdout=encoded([image(args[-1], OLD_SHA)]))
+            if args[:3] == ['docker', 'exec', 'ielts-learning']:
+                self.calls.append((args, kwargs)); raise subprocess.CalledProcessError(1, args)
+            return self.command(args, **kwargs)
+        with self.assertRaises(subprocess.CalledProcessError): self.invoke(command, learning=True)
+        for name, content in old_files.items(): self.assertEqual((self.base / name).read_text(), content)
+        last_compose = [(args, kwargs) for args, kwargs in self.calls if args[:2] == ['docker', 'compose']][-1]
+        self.assertEqual(last_compose[1]['env']['IELTS_LEARNING_IMAGE'], old_ids['learning'])
+        self.assertIn(str(self.base / 'learning.compose.yml'), last_compose[0])
+        self.assertEqual(sum(args[:2] == ['docker', 'run'] for args, _ in self.calls), 1)
+        self.assertTrue(all('down' not in args for args, _ in self.calls))
+
+    def test_failed_first_learning_release_restores_legacy_pair_and_removes_only_learning_container(self):
+        self.learning_payload()
+        previous = {'version': OLD_SHA, 'api': release.REPOSITORIES['api'] + '@' + API_DIGEST,
+                    'web': release.REPOSITORIES['web'] + '@' + WEB_DIGEST,
+                    'apiImageId': 'sha256:' + '6' * 64, 'webImageId': 'sha256:' + '7' * 64}
+        (self.base / 'runtime.env').write_text('previous runtime')
+        (self.base / 'release.json').write_text(json.dumps(previous))
+        def command(args, **kwargs):
+            if args[:3] == ['docker', 'image', 'inspect'] and args[-1] in [previous['apiImageId'], previous['webImageId']]:
+                self.calls.append((args, kwargs))
+                return subprocess.CompletedProcess(args, 0, stdout=encoded([image(args[-1], OLD_SHA)]))
+            if args[:3] == ['docker', 'exec', 'ielts-learning']:
+                self.calls.append((args, kwargs)); raise subprocess.CalledProcessError(1, args)
+            return self.command(args, **kwargs)
+        with self.assertRaises(subprocess.CalledProcessError): self.invoke(command, learning=True)
+        self.assertEqual((self.base / 'runtime.env').read_text(), 'previous runtime')
+        self.assertFalse((self.base / 'api-learning.env').exists()); self.assertFalse((self.base / 'learning.env').exists())
+        self.assertTrue((self.base / 'data' / 'runtime').is_dir())
+        self.assertTrue(any(args == ['docker', 'rm', '--force', 'ielts-learning'] for args, _ in self.calls))
+        last_compose = [(args, kwargs) for args, kwargs in self.calls if args[:2] == ['docker', 'compose']][-1]
+        self.assertNotIn(str(self.base / 'learning.compose.yml'), last_compose[0])
+        self.assertNotIn('IELTS_LEARNING_IMAGE', last_compose[1]['env'])
+
+    def test_three_image_rollback_rejects_omitted_learning_source_or_noncanonical_repo(self):
+        previous = {'version': OLD_SHA, 'api': release.REPOSITORIES['api'] + '@' + API_DIGEST,
+                    'web': release.REPOSITORIES['web'] + '@' + WEB_DIGEST,
+                    'learning': release.REPOSITORIES['learning'] + '@' + LEARNING_DIGEST,
+                    'apiImageId': API_ID, 'webImageId': WEB_ID, 'learningImageId': LEARNING_ID}
+        with mock.patch.object(release, 'inspect_image', side_effect=lambda value: image(value, OLD_SHA)):
+            self.assertEqual(release.rollback_images(previous)['IELTS_LEARNING_IMAGE'], LEARNING_ID)
+        for invalid in [{**previous, 'learning': 'ghcr.io/other/ielts-learning@' + LEARNING_DIGEST},
+                        {key: value for key, value in previous.items() if key != 'learning'}]:
+            with mock.patch.object(release, 'inspect_image', side_effect=lambda value: image(value, OLD_SHA)):
+                with self.assertRaises(ValueError): release.rollback_images(invalid)
 
     def test_legacy_rollback_is_resolved_to_verified_image_ids(self):
         old = {'version':OLD_SHA,'api':release.REPOSITORIES['api']+'@'+API_DIGEST,'web':release.REPOSITORIES['web']+'@'+WEB_DIGEST}

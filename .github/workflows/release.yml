@@ -3,6 +3,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      learning_digest:
+        description: Immutable learning image digest produced by the private runtime build for this main commit
+        required: true
+        type: string
 permissions:
   contents: read
 concurrency:
@@ -59,6 +64,9 @@ jobs:
           cache-to: type=gha,scope=ielts-web,mode=max
   deploy:
     needs: build
+    # The private runtime workflow builds its source with its own read-only token.
+    # A trusted maintainer passes its immutable image digest to this protected job.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: production
     permissions:
@@ -66,6 +74,7 @@ jobs:
     env:
       API_DIGEST: ${{ needs.build.outputs.api_digest }}
       WEB_DIGEST: ${{ needs.build.outputs.web_digest }}
+      LEARNING_DIGEST: ${{ inputs.learning_digest }}
       RELEASE_SHA: ${{ github.sha }}
       DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
       DEPLOY_USER: ${{ vars.DEPLOY_USER }}
