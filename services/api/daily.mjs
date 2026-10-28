@@ -445,10 +445,9 @@ function validateContent(value, source) {
     !Array.isArray(questions) ||
     questions.length < 5 ||
     questions.length > 14 ||
-    new Set(questions.map((q) => q.kind)).size < 2 ||
     new Set(questions.map((q) => q.id)).size !== questions.length
   )
-    throw failure(502, "阅读题目数量或题型不符合要求");
+    throw failure(502, "阅读需要至少 5 道有效题目且题号不重复");
   for (const q of questions) {
     if (
       !object(q) ||

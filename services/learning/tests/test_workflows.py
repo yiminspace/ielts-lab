@@ -227,8 +227,8 @@ async def test_graph_repairs_only_failed_questions_and_reverifies_complete_set()
 
 
 @pytest.mark.asyncio
-async def test_failed_review_never_returns_partial_course():
-    with pytest.raises(ValueError, match="failed independent verification"):
+async def test_fewer_than_five_verified_questions_still_require_retry():
+    with pytest.raises(ValueError, match="At least 5 independently verified"):
         await create_workflows(Gateway(always_fail=True))[0].execute(
             Context(), LessonInput(source=source())
         )
@@ -317,6 +317,65 @@ def test_source_quotation_does_not_mutate_passage_or_collapse_words():
     assert source_quotation(transcript, "Anew library.") == "Anew library."
     assert source_quotation(transcript, " ") == " "
     assert transcript == "A new library.\r\nOne quiet room."
+
+
+@pytest.mark.parametrize("separator", ["\n", "\r\n", "\t", "  ", "\u00a0"])
+def test_multiword_gap_answer_matches_original_whitespace_without_changing_answer(separator):
+    transcript = SOURCE.replace("three books", "three" + separator + "books")
+    draft = reading()
+    question = draft.questions[1]
+    question.prompt = "Visitors may borrow ___."
+    question.answer = "three books"
+    question.max_words = 2
+    validate_reading(transcript, draft)
+    assert question.answer == "three books"
+    assert question.evidence in transcript
+    question.answer = "four books"
+    with pytest.raises(ValueError, match="gap answer"):
+        validate_reading(transcript, draft)
+
+
+@pytest.mark.parametrize("options", [None, []])
+@pytest.mark.parametrize("answer", ["True", "False", "Not Given"])
+def test_missing_true_false_choices_are_fixed_by_question_type(options, answer):
+    raw = reading().model_dump()
+    question = raw["questions"][3]
+    question["answer"] = answer
+    if options is None:
+        question.pop("options")
+    else:
+        question["options"] = options
+    draft = ReadingDraft.model_validate(raw)
+    assert draft.questions[3].options == ["True", "False", "Not Given"]
+    assert draft.questions[3].answer == answer
+
+
+def test_explicit_incorrect_choices_and_missing_multiple_choice_options_still_fail():
+    raw = reading().model_dump()
+    raw["questions"][3]["options"] = ["Yes", "No", "Not Given"]
+    with pytest.raises(ValidationError):
+        ReadingDraft.model_validate(raw)
+    raw = reading().model_dump()
+    raw["questions"][0].pop("options")
+    with pytest.raises(ValidationError):
+        ReadingDraft.model_validate(raw)
+
+
+def test_malformed_question_does_not_discard_five_parseable_questions():
+    raw = reading().model_dump()
+    invalid = {**raw["questions"][0], "id": "unusable"}
+    invalid.pop("options")
+    raw["questions"].append(invalid)
+    draft = ReadingDraft.model_validate(raw)
+    validate_reading(SOURCE, draft)
+    assert [question.id for question in draft.questions] == ["q1", "q2", "q3", "q4", "q5"]
+
+
+def test_question_filter_does_not_fill_missing_translation():
+    raw = reading().model_dump()
+    raw.pop("translation")
+    with pytest.raises(ValidationError):
+        ReadingDraft.model_validate(raw)
 
 
 @pytest.mark.asyncio
