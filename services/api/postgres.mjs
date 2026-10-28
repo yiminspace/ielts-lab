@@ -194,7 +194,8 @@ export class PostgresStore {
       } = await this.pool.query(
         "SELECT max(version)::int AS version FROM schema_migrations WHERE rolled_back_at IS NULL",
       );
-      if (schema?.version !== SCHEMA_VERSION)
+      // Schema 2 only adds Daily entities; this rollback bridge keeps legacy CRUD.
+      if (![SCHEMA_VERSION, 2].includes(schema?.version))
         throw new Error(
           "Database schema is not current; run migrations with MIGRATION_DATABASE_URL",
         );
