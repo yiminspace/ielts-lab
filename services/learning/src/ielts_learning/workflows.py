@@ -4,7 +4,9 @@ import asyncio
 import re
 from dataclasses import dataclass, field
 
+import httpx
 from agent_runtime import Workflow, WorkflowContext
+from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior
 from pydantic_graph import BaseNode, End, GraphBuilder, GraphRunContext
 
 from .gateway import PydanticGateway
@@ -16,6 +18,7 @@ from .models import (
     ExpressionPlan,
     Lesson,
     LessonInput,
+    Question,
     Reading,
     ReadingDraft,
     Repairs,
@@ -78,27 +81,43 @@ def source_quotation(source: str, evidence: str) -> str:
     return match.group() if match else evidence
 
 
+def validate_question(source: str, question: Question) -> None:
+    # Keep the exact source span, including its original whitespace formatting.
+    question.evidence = source_quotation(source, question.evidence)
+    if question.evidence not in source:
+        raise ValueError(f"{question.id}: evidence must be an exact source quotation")
+    sentences = re.split(r"(?<=[.!?])\s+", question.evidence)
+    if len(sentences) > 4:
+        raise ValueError(f"{question.id}: evidence must have at most four adjacent sentences")
+    if (
+        question.kind == "gap"
+        and source_quotation(question.evidence, question.answer) not in question.evidence
+    ):
+        raise ValueError(f"{question.id}: gap answer must occur exactly in its evidence")
+
+
 def validate_reading(source: str, draft: ReadingDraft) -> None:
-    low, high = question_range(source)
-    if not low <= len(draft.questions) <= high:
-        raise ValueError(f"Use {low}-{high} questions for this source length")
+    # The requested range and question-type mix are generation targets. Deliver
+    # the grounded subset when it still makes a useful exercise.
+    if not 5 <= len(draft.questions) <= 14:
+        raise ValueError("Use 5-14 grounded questions")
     ids = [question.id for question in draft.questions]
     if len(set(ids)) != len(ids):
         raise ValueError("Question IDs must be unique")
-    if len({question.kind for question in draft.questions}) < 2:
-        raise ValueError("Use at least two question types")
+    grounded, failures = [], []
     for question in draft.questions:
-        # Transcripts retain line breaks between turns, while models often render
-        # the same contiguous quotation with spaces. Persist the actual source
-        # characters so downstream evidence checks and highlighting stay exact.
-        question.evidence = source_quotation(source, question.evidence)
-        if question.evidence not in source:
-            raise ValueError(f"{question.id}: evidence must be an exact source quotation")
-        sentences = re.split(r"(?<=[.!?])\s+", question.evidence)
-        if len(sentences) > 4:
-            raise ValueError(f"{question.id}: evidence must have at most four adjacent sentences")
-        if question.kind == "gap" and question.answer not in question.evidence:
-            raise ValueError(f"{question.id}: gap answer must occur exactly in its evidence")
+        try:
+            validate_question(source, question)
+        except ValueError as error:
+            failures.append(str(error))
+        else:
+            grounded.append(question)
+    if len(grounded) < 5:
+        raise ValueError(
+            "At least 5 grounded questions are required; correct these questions: "
+            + "; ".join(failures)
+        )
+    draft.questions = grounded
 
 
 @dataclass
@@ -110,6 +129,30 @@ class LessonState:
     expressions: ExpressionPlan | None = None
     failed: dict[str, str] = field(default_factory=dict)
     repair: int = 0
+
+
+def verified_lesson(state: LessonState) -> End[Lesson]:
+    """Only questions supported by both reviewers in the latest round may ship."""
+    assert state.reading is not None and state.expressions is not None
+    questions = [
+        question for question in state.reading.questions if question.id not in state.failed
+    ]
+    if len(questions) < 5:
+        raise ValueError(
+            "At least 5 independently verified questions are required; retry generation"
+        )
+    reading = ReadingDraft(translation=state.reading.translation, questions=questions)
+    validate_reading(state.input.source.transcript, reading)
+    return End(
+        Lesson(
+            **state.expressions.model_dump(),
+            reading=Reading(passage=state.input.source.transcript, **reading.model_dump()),
+        )
+    )
+
+
+class RepairGenerationFailed(Exception):
+    """A recoverable model/validation failure, never a persistence or lease error."""
 
 
 @dataclass
@@ -221,21 +264,14 @@ class Verify(BaseNode[LessonState, None, Lesson]):
                 or not reason.supported
             ):
                 state.failed[question.id] = check.reason + "; " + reason.reason
-        if state.failed:
-            if state.repair >= 2:
-                raise ValueError("The reading exercise failed independent verification")
+        if state.failed and state.repair < 2:
             return Repair()
-        return End(
-            Lesson(
-                **state.expressions.model_dump(),
-                reading=Reading(passage=source.transcript, **state.reading.model_dump()),
-            )
-        )
+        return verified_lesson(state)
 
 
 @dataclass
 class Repair(BaseNode[LessonState, None, Lesson]):
-    async def run(self, ctx: GraphRunContext[LessonState]) -> Verify:
+    async def run(self, ctx: GraphRunContext[LessonState]) -> Verify | End[Lesson]:
         state = ctx.state
         assert state.reading is not None
         state.repair += 1
@@ -245,6 +281,10 @@ class Repair(BaseNode[LessonState, None, Lesson]):
                 output.questions
             ) != len(state.failed):
                 raise ValueError("Repair must replace exactly the failed question IDs")
+            # A bad replacement must not be checkpointed merely because the
+            # unmodified, already verified questions could survive its removal.
+            for question in output.questions:
+                validate_question(state.input.source.transcript, question)
             replacements = {question.id: question for question in output.questions}
             candidate = ReadingDraft(
                 translation=state.reading.translation,
@@ -255,26 +295,40 @@ class Repair(BaseNode[LessonState, None, Lesson]):
             validate_reading(state.input.source.transcript, candidate)
 
         async def repair():
-            output = await state.gateway.generate(
-                Repairs,
-                profile(state.input.source.part)
-                + READING
-                + "Repair ONLY the failed question IDs. Keep their IDs; all other questions are frozen.",
-                {
-                    "source": state.input.source.transcript,
-                    "failures": state.failed,
-                    "questions": [
-                        question.model_dump()
-                        for question in state.reading.questions
-                        if question.id in state.failed
-                    ],
-                },
-                valid_repairs,
-            )
-            valid_repairs(output)
+            try:
+                output = await state.gateway.generate(
+                    Repairs,
+                    profile(state.input.source.part)
+                    + READING
+                    + "Repair ONLY the failed question IDs. Keep their IDs; all other questions are frozen.",
+                    {
+                        "source": state.input.source.transcript,
+                        "failures": state.failed,
+                        "questions": [
+                            question.model_dump()
+                            for question in state.reading.questions
+                            if question.id in state.failed
+                        ],
+                    },
+                    valid_repairs,
+                )
+                valid_repairs(output)
+            except (
+                ValueError,
+                TimeoutError,
+                ModelHTTPError,
+                UnexpectedModelBehavior,
+                httpx.HTTPError,
+            ) as error:
+                # This wrapper is inside the callback: checkpoint writes,
+                # leases and cancellation retain their ordinary failure paths.
+                raise RepairGenerationFailed from error
             return output.model_dump(mode="json")
 
-        raw = await state.runtime.step(f"reading.repair.{state.repair}", repair)
+        try:
+            raw = await state.runtime.step(f"reading.repair.{state.repair}", repair)
+        except RepairGenerationFailed:
+            return verified_lesson(state)
         repaired = {question.id: question for question in Repairs.model_validate(raw).questions}
         state.reading.questions = [
             repaired.get(question.id, question) for question in state.reading.questions

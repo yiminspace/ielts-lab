@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 
 class Model(BaseModel):
@@ -35,6 +35,9 @@ class Question(Model):
 
     @model_validator(mode="after")
     def valid_answer(self):
+        # These labels are fixed UI choices; only the answer needs model judgment.
+        if self.kind == "true_false" and not self.options:
+            self.options = ["True", "False", "Not Given"]
         if self.kind == "gap":
             if self.options or len(self.answer.split()) > self.max_words:
                 raise ValueError("A gap answer must respect max_words and have no options")
@@ -51,6 +54,20 @@ class Question(Model):
 class ReadingDraft(Model):
     translation: str = Field(min_length=1, max_length=40000)
     questions: list[Question] = Field(min_length=5, max_length=14)
+
+    @model_validator(mode="before")
+    @classmethod
+    def retain_parseable_questions(cls, value):
+        if isinstance(value, dict) and isinstance(value.get("questions"), list):
+            valid = []
+            for question in value["questions"]:
+                try:
+                    valid.append(Question.model_validate(question))
+                except ValidationError:
+                    continue
+            if len(valid) >= 5 and len(valid) < len(value["questions"]):
+                return {**value, "questions": valid}
+        return value
 
 
 class Reading(ReadingDraft):

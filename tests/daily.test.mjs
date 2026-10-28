@@ -327,6 +327,55 @@ test("daily full-paper listening creates four distinct grouped lessons with veri
   assert.equal(forged.source.paperId, null);
 });
 
+test("daily delivers five verified questions even when they share one type", async (t) => {
+  const runtime = fakeRuntime({
+    output: (output) => {
+      for (const question of output.reading.questions) {
+        question.kind = "choice";
+        question.options = ["Monday", "Tuesday", "Friday"];
+      }
+    },
+  });
+  const { service } = await fixture(t, runtime);
+  const seed = await service.ensure(owner, attempt());
+  const lesson = await completed(service, seed.id);
+  assert.equal(lesson.content.reading.questions.length, 5);
+  assert.deepEqual(
+    [
+      ...new Set(
+        lesson.content.reading.questions.map((question) => question.kind),
+      ),
+    ],
+    ["choice"],
+  );
+  assert(
+    lesson.content.reading.questions.every(
+      (question) => question.answer === undefined,
+    ),
+  );
+});
+
+for (const count of [3, 4]) {
+  test(`daily still rejects a generated lesson with only ${count} valid questions`, async (t) => {
+    const { service } = await fixture(
+      t,
+      fakeRuntime({
+        output: (output) => {
+          output.reading.questions.length = count;
+        },
+      }),
+    );
+    const seed = await service.ensure(owner, attempt());
+    const lesson = await completed(
+      service,
+      seed.id,
+      (value) => value.status === "failed",
+    );
+    assert.equal(lesson.content, null);
+    assert.match(lesson.error, /至少 5/);
+  });
+}
+
 test("daily generation hides keys until deterministic reading grading and rejects unsupported evidence", async (t) => {
   const { service, runtime } = await fixture(t);
   const seed = await service.ensure(owner, attempt());
