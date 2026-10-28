@@ -67,6 +67,17 @@ def question_range(source: str) -> tuple[int, int]:
     return (5, 7) if count < 400 else (8, 10) if count < 700 else (13, 14)
 
 
+def source_quotation(source: str, evidence: str) -> str:
+    """Restore the original source span when only whitespace formatting differs."""
+    if evidence in source:
+        return evidence
+    words = evidence.split()
+    if not words:
+        return evidence
+    match = re.search(r"\s+".join(re.escape(word) for word in words), source)
+    return match.group() if match else evidence
+
+
 def validate_reading(source: str, draft: ReadingDraft) -> None:
     low, high = question_range(source)
     if not low <= len(draft.questions) <= high:
@@ -77,6 +88,10 @@ def validate_reading(source: str, draft: ReadingDraft) -> None:
     if len({question.kind for question in draft.questions}) < 2:
         raise ValueError("Use at least two question types")
     for question in draft.questions:
+        # Transcripts retain line breaks between turns, while models often render
+        # the same contiguous quotation with spaces. Persist the actual source
+        # characters so downstream evidence checks and highlighting stay exact.
+        question.evidence = source_quotation(source, question.evidence)
         if question.evidence not in source:
             raise ValueError(f"{question.id}: evidence must be an exact source quotation")
         sentences = re.split(r"(?<=[.!?])\s+", question.evidence)

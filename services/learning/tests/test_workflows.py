@@ -20,7 +20,7 @@ from ielts_learning.models import (
     WritingFeedback,
 )
 from ielts_learning.profiles import PROFILES
-from ielts_learning.workflows import create_workflows, parallel, validate_reading
+from ielts_learning.workflows import create_workflows, parallel, source_quotation, validate_reading
 
 SOURCE = (
     "The Riverside library opens at nine. Visitors can borrow three books. "
@@ -277,6 +277,70 @@ def test_grounding_unique_ids_and_source_part_are_enforced():
     with pytest.raises(ValidationError):
         LessonInput(source=source(), target_band=7)
     assert len(set(PROFILES.values())) == 4
+
+
+@pytest.mark.parametrize("separator", ["\n", "\r\n", "\t", "  ", "\u00a0"])
+def test_reading_restores_contiguous_evidence_to_original_whitespace(separator):
+    transcript = SOURCE.replace(". ", "." + separator)
+    draft = reading()
+    draft.questions[
+        0
+    ].evidence = "The Riverside library opens at nine. Visitors can borrow three books."
+    validate_reading(transcript, draft)
+    assert draft.questions[0].evidence == (
+        "The Riverside library opens at nine." + separator + "Visitors can borrow three books."
+    )
+    assert all(question.evidence in transcript for question in draft.questions)
+    assert draft.questions[1].answer == "three"
+
+
+@pytest.mark.parametrize(
+    "evidence",
+    [
+        "The Riverside library opens at ten.",
+        "The Riverside library opens at nine. A reading club meets on Monday.",
+        "The library opens at nine.",
+        "The Riverside library opens at nine!",
+    ],
+)
+def test_reading_still_rejects_changed_or_noncontiguous_quotations(evidence):
+    transcript = SOURCE.replace(". ", ".\n")
+    draft = reading()
+    draft.questions[0].evidence = evidence
+    with pytest.raises(ValueError, match="exact source quotation"):
+        validate_reading(transcript, draft)
+
+
+def test_source_quotation_does_not_mutate_passage_or_collapse_words():
+    transcript = "A new library.\r\nOne quiet room."
+    assert source_quotation(transcript, "A new library. One quiet room.") == transcript
+    assert source_quotation(transcript, "Anew library.") == "Anew library."
+    assert source_quotation(transcript, " ") == " "
+    assert transcript == "A new library.\r\nOne quiet room."
+
+
+@pytest.mark.asyncio
+async def test_graph_checkpoints_original_multiline_quotation():
+    class FlattenedEvidence(Gateway):
+        async def generate(self, schema, instructions, payload, validate=None):
+            output = await super().generate(schema, instructions, payload)
+            if schema is ReadingDraft:
+                output.questions[0].evidence += " " + output.questions[1].evidence
+            if validate:
+                validate(output)
+            return output
+
+    transcript = SOURCE.replace(". ", ".\n")
+    context = Context()
+    result = await create_workflows(FlattenedEvidence())[0].execute(
+        context, LessonInput(source={**source(), "transcript": transcript})
+    )
+    assert result.reading.passage == transcript
+    evidence = result.reading.questions[0].evidence
+    assert "\n" in evidence and evidence in transcript
+    assert context.checkpoints["reading.generate"]["questions"][0]["evidence"] == evidence
+    assert "reading.blind.0" in context.checkpoints
+    assert "reading.explanation.0" in context.checkpoints
 
 
 @pytest.mark.asyncio
