@@ -164,3 +164,11 @@ and the owner can save/reload a draft, replay Range media, upload/replay/delete 
 recording, and recover persisted data after restart. Health checks alone do not
 prove those behaviors. Check the public version SHA and actual browser login
 callback after the platform allowlists have been deployed.
+
+## Production activation: 2026-10-28
+
+The three-service release at `5144fb5d31f498c26e933b7001ffd1970bb21ed6` is active; [release run](https://github.com/yiminspace/ielts-lab/actions/runs/40656076704) completed successfully. A schema-1/2-compatible legacy pair at `86711e770273835429656b56aa20ec437cf99cdf` was deployed first, so the automatic rollback candidate can start after migration 002 without removing Daily tables. The pre-upgrade full backup was restored into an isolated database/file tree.
+
+The host GHCR blob route was slow. Images built on the trusted workstation/CI were transferred as private archives, then the unchanged server release endpoint verified remote immutable manifests, raw config digests, rootfs, Linux/amd64 and matching revisions before execution. No server build occurred. Trusted CI alone decrypted and supplied the production configuration.
+
+The platform backup chain was upgraded via [yiminlab PR 542](https://github.com/yiminspace/yiminlab/pull/542). Installed Mac consumers still verified the existing v3 snapshot before the server producer was replaced. The first v4 snapshot is `20261028_083246`; it includes Daily audio, a standalone runtime SQLite snapshot and the three-service configuration. Full verification outcomes are recorded in [coverage](coverage.md#生产部署与实际镜像验收).
