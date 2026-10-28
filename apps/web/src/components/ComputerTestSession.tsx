@@ -1,4 +1,5 @@
 import { ieltsExamAttrs } from "../lib/exam-theme";
+import { DailyAttemptBanner } from "./DailyWorkspace";
 import {
   createElement,
   Fragment,
@@ -2213,6 +2214,12 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
             <main className="ct-complete">
               <h1>Practice submitted</h1>
               <p>Your answers have been saved to your learning history.</p>
+              {item.kind === "listening" && !paperMode && (
+                <DailyAttemptBanner
+                  itemId={item.id}
+                  attemptId={session.attemptId}
+                />
+              )}
               <div className="ct-score">
                 <strong>{grade.score}</strong>
                 <span> / {grade.total}</span>

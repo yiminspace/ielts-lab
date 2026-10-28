@@ -19,6 +19,7 @@ import {
 } from "../lib/paper-session.mjs";
 import ComputerTestSession from "./ComputerTestSession";
 import ComputerWriting from "./ComputerWriting";
+import { DailyAttemptBanner } from "./DailyWorkspace";
 import "../papers.css";
 
 const names = {
@@ -251,6 +252,16 @@ function PaperRunView({ paper }: { paper: ExamPaperDetail }) {
                 </section>
               ))}
             </div>
+            {results
+              .filter((entry) => entry.stage === "listening")
+              .flatMap((entry) => entry.attempts)
+              .map((attempt) => (
+                <DailyAttemptBanner
+                  key={attempt.id}
+                  itemId={attempt.itemId}
+                  attemptId={attempt.id}
+                />
+              ))}
             <p className="paper-note">
               客观题按本地答案核对；作文已保存，未做考官评分。这里不换算官方分数。历史记录也可在“练习记录”中查看。
             </p>

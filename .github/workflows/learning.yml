@@ -1,0 +1,61 @@
+name: Verify and build learning service
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  learning:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Read fixed runtime revision
+        id: runtime
+        run: |
+          python3 - <<'PY'
+          import os, tomllib
+          from pathlib import Path
+          config=tomllib.loads(Path('services/learning/pyproject.toml').read_text())
+          ref=config['tool']['uv']['sources']['agent-runtime']['rev']
+          assert len(ref)==40 and all(c in '0123456789abcdef' for c in ref)
+          with open(os.environ['GITHUB_OUTPUT'],'a') as out: out.write('ref='+ref+'\n')
+          PY
+      - name: Read private runtime source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: yiminspace/agent-runtime
+          ref: ${{ steps.runtime.outputs.ref }}
+          token: ${{ secrets.AGENT_RUNTIME_READ_TOKEN }}
+          persist-credentials: false
+          path: .runtime-source
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff
+        with:
+          version: "0.10.12"
+          python-version: "3.12"
+      - name: Install locked dependencies and fixed local runtime checkout
+        run: |
+          uv venv services/learning/.venv
+          uv export --project services/learning --frozen --no-emit-project --no-emit-package agent-runtime --format requirements-txt --no-hashes > "$RUNNER_TEMP/learning-requirements.txt"
+          uv pip install --python services/learning/.venv/bin/python -r "$RUNNER_TEMP/learning-requirements.txt" -e .runtime-source -e services/learning
+      - run: services/learning/.venv/bin/python -m pytest services/learning/tests -q
+      - run: services/learning/.venv/bin/ruff check services/learning/src services/learning/tests
+      - run: services/learning/.venv/bin/ruff format --check services/learning/src services/learning/tests
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: .
+          file: deploy/learning.Dockerfile
+          build-contexts: agent-runtime=.runtime-source
+          build-args: GIT_SHA=${{ github.sha }}
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/yiminspace/ielts-learning:sha-${{ github.sha }}

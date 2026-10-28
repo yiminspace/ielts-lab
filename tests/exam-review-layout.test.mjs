@@ -52,6 +52,10 @@ function renderTree(nodes, feedback = (index) => index, expandedReviews = []) {
       if (name === "dompurify")
         return { default: { sanitize: (html) => html } };
       if (name === "../lib/content") return { mediaUrl: () => "" };
+      // This renderer exercises only original question trees. Daily's network
+      // observer is covered by its real-browser/API suite and stays inert here.
+      if (name === "./DailyWorkspace")
+        return { DailyAttemptBanner: () => null };
       if (name === "../lib/progress" || name === "./PracticeFrame") return {};
       if (name.startsWith("../lib/") || name.endsWith(".css")) return {};
       return require(name);
@@ -206,12 +210,18 @@ test("expanded explanations follow both prompt and summary inside their own ques
 
 test("questions without review feedback retain the original paragraph and list structure", () => {
   const { html } = renderTree(
-    [element("p", ["First ......"]), element("ul", [element("li", ["Then ......"])])],
+    [
+      element("p", ["First ......"]),
+      element("ul", [element("li", ["Then ......"])]),
+    ],
     () => null,
   );
   assert.match(
     html,
     /<p>First <span data-gap="0">blank 0<\/span><\/p><ul><li>Then <span data-gap="1">blank 1<\/span><\/li><\/ul>/,
   );
-  assert.doesNotMatch(html, /exam-review-row|exam-review-meta|exam-review-details/);
+  assert.doesNotMatch(
+    html,
+    /exam-review-row|exam-review-meta|exam-review-details/,
+  );
 });

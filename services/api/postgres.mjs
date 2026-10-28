@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 const entityBuckets = new Set([
   "drafts",
   "notes",
@@ -8,7 +8,12 @@ const entityBuckets = new Set([
   "settings",
   "practice_sessions",
 ]);
-const userTables = [...entityBuckets, "attempts", "recordings"];
+const userTables = [
+  ...entityBuckets,
+  "attempts",
+  "recordings",
+  "daily_lessons",
+];
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const object = (value) =>
@@ -219,10 +224,13 @@ export class PostgresStore {
       throw error;
     }
   }
-  async close() {
-    if (this.closed) return;
+  close() {
+    if (this.closePromise) return this.closePromise;
     this.closed = true;
-    if (this.ownsPool && this.pool) await this.pool.end();
+    this.closePromise = Promise.resolve().then(() => {
+      if (this.ownsPool && this.pool) return this.pool.end();
+    });
+    return this.closePromise;
   }
   async transaction(userId, mode, callback, repeatable = false) {
     assertScope(userId, mode);
@@ -365,10 +373,85 @@ export class PostgresStore {
       updatedAt: iso(existing.updated_at),
     };
   }
-  async addAttempt(userId, mode, attempt) {
-    return this.transaction(userId, mode, (client) =>
-      this.insertAttempt(client, userId, mode, attempt),
+  async addAttempt(userId, mode, attempt, lessonSeed) {
+    return this.transaction(userId, mode, async (client) => {
+      const result = await this.insertAttempt(client, userId, mode, attempt);
+      if (lessonSeed) await this.insertDaily(client, userId, mode, lessonSeed);
+      return result;
+    });
+  }
+  async insertDaily(client, userId, mode, seed) {
+    if (
+      !cleanValue(seed) ||
+      Buffer.byteLength(JSON.stringify(seed)) > 2 * 1024 * 1024
+    )
+      throw failure(400, "课程内容无效或过大");
+    const { rows } = await client.query(
+      `INSERT INTO daily_lessons(user_id,mode,id,attempt_id,version,data,created_at)
+       VALUES($1,$2,$3,$4,1,$5::jsonb,$6) ON CONFLICT DO NOTHING RETURNING data`,
+      [
+        userId,
+        mode,
+        seed.id,
+        seed.attemptId,
+        JSON.stringify(seed),
+        seed.createdAt,
+      ],
     );
+    if (rows.length) return rows[0].data;
+    const { rows: existing } = await client.query(
+      "SELECT data FROM daily_lessons WHERE user_id=$1 AND mode=$2 AND attempt_id=$3",
+      [userId, mode, seed.attemptId],
+    );
+    return existing[0]?.data || null;
+  }
+  async ensureDaily(userId, mode, seed) {
+    return this.transaction(userId, mode, (client) =>
+      this.insertDaily(client, userId, mode, seed),
+    );
+  }
+  async listDaily(userId, mode) {
+    return this.transaction(userId, mode, async (client) => {
+      const { rows } = await client.query(
+        "SELECT data FROM daily_lessons WHERE user_id=$1 AND mode=$2 ORDER BY created_at DESC,id",
+        [userId, mode],
+      );
+      return rows.map((row) => row.data);
+    });
+  }
+  async getDaily(userId, mode, id) {
+    return this.transaction(userId, mode, async (client) => {
+      const { rows } = await client.query(
+        "SELECT data FROM daily_lessons WHERE user_id=$1 AND mode=$2 AND id=$3",
+        [userId, mode, id],
+      );
+      return rows[0]?.data || null;
+    });
+  }
+  async mutateDaily(userId, mode, id, change) {
+    return this.transaction(userId, mode, async (client) => {
+      const {
+        rows: [existing],
+      } = await client.query(
+        "SELECT data,version FROM daily_lessons WHERE user_id=$1 AND mode=$2 AND id=$3 FOR UPDATE",
+        [userId, mode, id],
+      );
+      if (!existing) throw failure(404, "课程不存在");
+      const next = await change(structuredClone(existing.data));
+      if (!next) return existing.data;
+      next.version = existing.version + 1;
+      next.updatedAt = new Date().toISOString();
+      if (
+        !cleanValue(next) ||
+        Buffer.byteLength(JSON.stringify(next)) > 2 * 1024 * 1024
+      )
+        throw failure(413, "课程记录超过容量限制");
+      await client.query(
+        "UPDATE daily_lessons SET data=$4::jsonb,version=$5,updated_at=clock_timestamp() WHERE user_id=$1 AND mode=$2 AND id=$3",
+        [userId, mode, id, JSON.stringify(next), next.version],
+      );
+      return next;
+    });
   }
   async importProgress(userId, mode, progress) {
     if (

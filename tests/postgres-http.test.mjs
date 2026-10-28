@@ -40,6 +40,7 @@ test(
           app.server.closeAllConnections();
           app.server.close(resolve);
         });
+      await app.daily.close();
       await app.store.close();
     }
     t.after(async () => {
@@ -275,6 +276,74 @@ test(
         })
       ).status,
       200,
+    );
+    // Imported history does not launch AI work. A new listening submission does,
+    // even with AI disabled: its blocked lesson survives independently of grades.
+    const historicalListening = {
+      ...attempt,
+      id: "original-history-listening",
+      kind: "listening",
+      itemId: "demo-listening",
+    };
+    assert.equal(
+      (
+        await app.json("/api/progress/import", "POST", {
+          progress: {
+            attempts: [historicalListening],
+            drafts: {},
+            notes: {},
+            bookmarks: [],
+          },
+          merge: true,
+        })
+      ).status,
+      200,
+    );
+    let dailyResponse = await app.request("/api/daily", {
+      headers: { Cookie: app.Cookie },
+    });
+    assert.equal((await dailyResponse.json()).lessons.length, 0);
+    const newListening = {
+      ...historicalListening,
+      id: "original-new-listening",
+      answers: { "0:0": "Monday" },
+    };
+    assert.equal(
+      (await app.json("/api/attempts", "POST", newListening)).status,
+      200,
+    );
+    assert.equal(
+      (await app.json("/api/attempts", "POST", newListening)).status,
+      200,
+    );
+    dailyResponse = await app.request("/api/daily", {
+      headers: { Cookie: app.Cookie },
+    });
+    const daily = await dailyResponse.json();
+    assert.equal(daily.lessons.length, 1);
+    assert.equal(daily.lessons[0].status, "blocked");
+    assert.equal((await app.request("/api/daily")).status, 401);
+    assert.equal(
+      (await app.request(`/api/daily/${daily.lessons[0].id}`)).status,
+      401,
+    );
+    assert.equal(
+      (
+        await app.request(
+          `/api/daily/${daily.lessons[0].id}/recordings/recording-${"a".repeat(32)}/audio`,
+        )
+      ).status,
+      401,
+    );
+    await stop(app.app);
+    app = await start();
+    const restoredDaily = await (
+      await app.request("/api/daily", { headers: { Cookie: app.Cookie } })
+    ).json();
+    assert.equal(restoredDaily.lessons[0].id, daily.lessons[0].id);
+    assert.equal(
+      restoredDaily.lessons[0].source.transcript,
+      daily.lessons[0].source.transcript,
     );
   },
 );

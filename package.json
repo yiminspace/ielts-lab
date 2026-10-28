@@ -13,7 +13,9 @@
     "db:migrate": "node services/api/scripts/migrate.mjs",
     "db:import-progress": "node services/api/scripts/import-progress.mjs",
     "test:e2e": "playwright test",
-    "export:archive": "node scripts/export-archive.mjs"
+    "export:archive": "node scripts/export-archive.mjs",
+    "dev:daily": "node --env-file=.local/learning.env scripts/dev-daily.mjs",
+    "test:learning": "uv run --locked --project services/learning pytest -c services/learning/pyproject.toml services/learning/tests"
   },
   "dependencies": {
     "@yiminlab/authkit": "0.3.11",

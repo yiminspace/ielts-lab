@@ -49,6 +49,24 @@ let pendingSave: Promise<unknown> = Promise.resolve();
 let saveError = "";
 let hydrated = false;
 let dirty = false;
+const pendingAttemptIds = new Set<string>();
+function newAttemptKey(id: string) {
+  return `${KEY}::new-attempt::${id}`;
+}
+function pendingNewAttempts(attempts: Attempt[]) {
+  return attempts
+    .filter((attempt) => {
+      try {
+        return (
+          pendingAttemptIds.has(attempt.id) ||
+          localStorage.getItem(newAttemptKey(attempt.id)) === "pending"
+        );
+      } catch {
+        return pendingAttemptIds.has(attempt.id);
+      }
+    })
+    .map((attempt) => attempt.id);
+}
 
 function valid(value: unknown): value is Progress {
   const p = value as Progress;
@@ -470,7 +488,8 @@ function saveServer(leavingPage = false) {
   if (!hydrated || !dirty) return;
   const body = JSON.stringify(state),
     version = state.updatedAt,
-    capturedEpoch = epoch;
+    capturedEpoch = epoch,
+    newAttempts = !hosted ? pendingNewAttempts(state.attempts) : [];
   pendingSave = pendingSave
     .catch(() => {})
     .then(async () => {
@@ -482,7 +501,12 @@ function saveServer(leavingPage = false) {
         }
         const r = await fetch("/api/progress", {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(newAttempts.length
+              ? { "X-IELTS-New-Attempts": newAttempts.join(",") }
+              : {}),
+          },
           body,
           keepalive:
             leavingPage && new TextEncoder().encode(body).byteLength < 60000,
@@ -496,6 +520,14 @@ function saveServer(leavingPage = false) {
           return;
         }
         if (!r.ok) throw new Error("保存到本地服务失败");
+        for (const id of newAttempts) {
+          pendingAttemptIds.delete(id);
+          try {
+            localStorage.removeItem(newAttemptKey(id));
+          } catch {
+            /* A retry is idempotent. */
+          }
+        }
         saveError = "";
         if (state.updatedAt === version) dirty = false;
       } catch {
@@ -553,6 +585,7 @@ export function resetProgress() {
   pendingSave = Promise.resolve();
   saveError = "";
   identity = "";
+  pendingAttemptIds.clear();
   notify();
 }
 export function useProgress() {
@@ -594,12 +627,22 @@ export function getProgress() {
 }
 export function recordAttempt(a: Omit<Attempt, "id" | "createdAt">) {
   refreshBrowser();
+  const attempt = {
+    ...a,
+    id: crypto.randomUUID(),
+    createdAt: new Date().toISOString(),
+  };
+  if (!hosted) {
+    pendingAttemptIds.add(attempt.id);
+    try {
+      localStorage.setItem(newAttemptKey(attempt.id), "pending");
+    } catch {
+      /* Keep the in-memory marker while this page remains open. */
+    }
+  }
   persist({
     ...state,
-    attempts: [
-      { ...a, id: crypto.randomUUID(), createdAt: new Date().toISOString() },
-      ...state.attempts,
-    ].slice(0, hosted ? 10000 : 2000),
+    attempts: [attempt, ...state.attempts].slice(0, hosted ? 10000 : 2000),
   });
 }
 export function saveDraft(id: string, value: any) {
@@ -720,6 +763,7 @@ export async function hydrateProgress(nextMode = "archive") {
     saveError = "暂未连接到本地记录服务，当前使用浏览器中的学习记录。";
   }
   hydrated = true;
+  if (!hosted && pendingNewAttempts(state.attempts).length) dirty = true;
   if (dirty) saveServer();
   notify();
 }

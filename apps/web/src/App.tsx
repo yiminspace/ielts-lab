@@ -45,6 +45,7 @@ import ComputerTestSession from "./components/ComputerTestSession";
 import ComputerWriting from "./components/ComputerWriting";
 import PaperCatalog from "./components/PaperCatalog";
 import PaperWorkspace from "./components/PaperWorkspace";
+import DailyWorkspace from "./components/DailyWorkspace";
 import { totalPracticeSeconds } from "./lib/paper-session.mjs";
 import { matchesTestTrack } from "./lib/test-track.mjs";
 
@@ -251,21 +252,23 @@ export default function App() {
   }, [itemId]);
   const activeKind = item?.kind || (section === "library" ? kind : null);
   const title =
-    section === "papers"
-      ? "G 类完整套卷"
-      : section === "home"
-        ? "学习空间"
-        : section === "library"
-          ? label(kind)
-          : section === "history"
-            ? "练习记录"
-            : section === "mistakes"
-              ? "错题复习"
-              : section === "bookmarks"
-                ? "我的收藏"
-                : section === "settings"
-                  ? "资料与设置"
-                  : item?.title || "正在打开材料";
+    section === "daily"
+      ? "听后练习"
+      : section === "papers"
+        ? "G 类完整套卷"
+        : section === "home"
+          ? "学习空间"
+          : section === "library"
+            ? label(kind)
+            : section === "history"
+              ? "练习记录"
+              : section === "mistakes"
+                ? "错题复习"
+                : section === "bookmarks"
+                  ? "我的收藏"
+                  : section === "settings"
+                    ? "资料与设置"
+                    : item?.title || "正在打开材料";
   const stats = useMemo(() => {
     const attempts = progress.attempts;
     const scored = attempts.filter(
@@ -425,6 +428,7 @@ export default function App() {
           ))}
           <div className="nav-label">我的学习</div>
           {[
+            { id: "daily", icon: BookOpen, text: "听后练习" },
             { id: "history", icon: History, text: "练习记录" },
             { id: "mistakes", icon: ListChecks, text: "错题复习" },
             { id: "bookmarks", icon: Bookmark, text: "我的收藏" },
@@ -603,6 +607,15 @@ export default function App() {
                 </Boundary>
               )}
             </>
+          ) : section === "daily" ? (
+            <DailyWorkspace
+              key={route}
+              id={
+                route.startsWith("/daily/")
+                  ? decodeURIComponent(route.slice(7))
+                  : undefined
+              }
+            />
           ) : section === "papers" ? (
             <PaperCatalog />
           ) : section === "home" ? (

@@ -1,0 +1,32 @@
+# Optional overlay. Deploy only immutable images built by trusted CI; never build on the server.
+# Install private api-learning.env and learning.env with the same IELTS_RUNTIME_TOKEN.
+services:
+  ielts-api:
+    env_file: [runtime.env, api-learning.env]
+    environment:
+      IELTS_RUNTIME_URL: http://ielts-learning:4320
+      DAILY_ROOT: /data/daily
+    volumes:
+      - ielts-daily:/data/daily
+    networks: [web-proxy, learning]
+  ielts-learning:
+    image: ${IELTS_LEARNING_IMAGE:?Set an immutable learning image reference}
+    restart: unless-stopped
+    env_file: learning.env
+    environment:
+      HOST: 0.0.0.0
+      PORT: "4320"
+      RUNTIME_DATABASE: /data/runtime/runtime.sqlite
+    volumes:
+      - ielts-runtime:/data/runtime
+    networks: [learning]
+    read_only: true
+    tmpfs: ["/tmp:size=32m,noexec,nosuid"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+networks:
+  learning:
+volumes:
+  ielts-daily:
+  ielts-runtime:
