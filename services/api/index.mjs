@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { inside, loadLibrary } from "./library.mjs";
 import { createAuth } from "./auth.mjs";
 import { createRecordings, createLocalRecordingStore } from "./recordings.mjs";
+import { createDaily } from "./daily.mjs";
 
 const moduleRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -272,6 +273,8 @@ export async function createApp({
   verifyIdentity,
   now,
   allowInsecureTest = false,
+  runtimeClient,
+  dailyPollInterval,
 } = {}) {
   const auth = createAuth({ env, verifyIdentity, now, allowInsecureTest });
   if (auth.required && !env.DATABASE_URL && !suppliedStore)
@@ -329,6 +332,15 @@ export async function createApp({
     store: store || createLocalRecordingStore(recordingsRoot),
     mode: library.mode,
     library,
+  });
+  const daily = createDaily({
+    library,
+    store,
+    root: env.DAILY_ROOT || path.join(projectRoot, ".local", "daily"),
+    env,
+    ownerId: auth.ownerUserId,
+    runtimeClient,
+    pollInterval: dailyPollInterval,
   });
   let writeQueue = Promise.resolve();
   async function readProgressDisk() {
@@ -389,6 +401,69 @@ export async function createApp({
         route === "/recordings" ||
         route.startsWith("/recordings/");
       const user = protectedRoute ? auth.requireUser(req) : null;
+      if (read && route === "/api/daily")
+        return sendJSON(
+          res,
+          200,
+          await daily.list(user.id),
+          req.method === "HEAD",
+        );
+      const dailyAudio =
+        /^\/api\/daily\/(daily-[a-f0-9]{40})\/recordings\/((?:recording|teacher)-[a-f0-9]{32})\/audio$/.exec(
+          route,
+        );
+      if (dailyAudio && read) {
+        const file = await daily.audio(user.id, dailyAudio[1], dailyAudio[2]);
+        return streamFile(req, res, file.directory, file.target, {
+          rejectSymlinks: true,
+          contentType: file.metadata.contentType,
+          noStore: true,
+        });
+      }
+      const dailyUpload =
+        /^\/api\/daily\/(daily-[a-f0-9]{40})\/recordings$/.exec(route);
+      if (dailyUpload && req.method === "POST")
+        return sendJSON(
+          res,
+          202,
+          await daily.upload(
+            user.id,
+            dailyUpload[1],
+            req,
+            new URL(req.url, "http://local.invalid"),
+          ),
+        );
+      const dailyRoute =
+        /^\/api\/daily\/(daily-[a-f0-9]{40})(?:\/(retry|reading|conversation|conversation-state|recognition-error|expression-help|writing|draft|speech))?$/.exec(
+          route,
+        );
+      if (dailyRoute) {
+        if (read && !dailyRoute[2])
+          return sendJSON(
+            res,
+            200,
+            await daily.get(user.id, dailyRoute[1]),
+            req.method === "HEAD",
+          );
+        if (req.method === "POST" && dailyRoute[2]) {
+          const value = await daily.action(
+            user.id,
+            dailyRoute[1],
+            dailyRoute[2],
+            await readJSONBody(req),
+          );
+          return sendJSON(
+            res,
+            ["conversation", "expression-help", "writing"].includes(
+              dailyRoute[2],
+            )
+              ? 202
+              : 200,
+            value,
+          );
+        }
+        return sendJSON(res, 405, { error: "此操作不被支持" });
+      }
       if (read && route === "/api/auth/me")
         return sendJSON(
           res,
@@ -415,6 +490,21 @@ export async function createApp({
               status: 409,
             });
           await atomicJSON(progressFile, value);
+          const newAttemptsHeader = req.headers["x-ielts-new-attempts"];
+          const submittedIds = new Set(
+            typeof newAttemptsHeader === "string" &&
+              newAttemptsHeader.length <= 10000
+              ? newAttemptsHeader.split(",")
+              : [],
+          );
+          for (const attempt of value.attempts)
+            if (attempt.kind === "listening" && submittedIds.has(attempt.id))
+              await daily.ensure(user.id, attempt).catch(() => {
+                throw Object.assign(
+                  new Error("作答已保存，听后练习暂未入队；请保留页面等待重试"),
+                  { status: 503 },
+                );
+              });
         });
         writeQueue = operation.catch(() => {});
         await operation;
@@ -467,7 +557,12 @@ export async function createApp({
         return sendJSON(
           res,
           200,
-          await store.addAttempt(user.id, library.mode, attempt),
+          await store.addAttempt(
+            user.id,
+            library.mode,
+            attempt,
+            await daily.seed(user.id, attempt),
+          ),
         );
       }
       if (req.method === "POST" && route === "/api/progress/import") {
@@ -662,9 +757,12 @@ export async function createApp({
   server.headersTimeout = 10000;
   server.on("close", () => {
     auth.close();
-    void Promise.resolve(store?.close?.()).catch(() => {});
+    void daily
+      .close()
+      .then(() => store?.close?.())
+      .catch(() => {});
   });
-  return { server, library, progressFile, store };
+  return { server, library, progressFile, store, daily };
 }
 
 if (
@@ -686,7 +784,7 @@ if (
     process.env.IELTS_AUTH_REQUIRED !== "1"
   )
     throw new Error("非本机监听必须启用权限控制");
-  const { server, library } = await createApp({
+  const { server, library, daily, store } = await createApp({
     forceDemo:
       process.argv.includes("--demo") || process.env.IELTS_DEMO === "1",
     dev,
@@ -698,7 +796,12 @@ if (
     ),
   );
   const stop = () => {
-    server.close(() => process.exit(0));
+    server.close(() => {
+      void daily
+        .close()
+        .then(() => store?.close?.())
+        .finally(() => process.exit(0));
+    });
     setTimeout(() => process.exit(0), 1500).unref();
   };
   process.on("SIGTERM", stop);

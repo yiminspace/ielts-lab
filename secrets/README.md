@@ -7,6 +7,11 @@ GitHub Environment Secret `SOPS_AGE_KEY`. Do not reuse the platform-wide key.
 - `api.env.sops`: encrypted runtime configuration matching `.env.example`.
 - `migration.env.sops`: encrypted deploy-only `DATABASE_URL` and
   `MIGRATION_DATABASE_URL`. The runtime URL must match `api.env.sops`.
+- `learning.env.sops`: IELTS-only model gateway, speech models and internal
+  runtime token. Uses an independent Bifrost virtual key, scoped to selected models.
+- `api-learning.env.sops`: only the shared internal runtime token for the Node API.
+  The protected deployment job decrypts both files for the learning compose overlay;
+  the trusted release entry validates all four configurations before activation.
 
 `.sops.yaml` at the repository root contains only this application's public age
 recipient and creation rules. Never commit `.env`, an age identity or database

@@ -12,7 +12,7 @@ COPY --from=dependencies /app/node_modules ./node_modules
 COPY package.json ./
 COPY services/api ./services/api
 COPY apps/web/src/lib/questions.mjs apps/web/src/lib/test-track.mjs ./apps/web/src/lib/
-RUN mkdir -p /data/recordings && chown node:node /data/recordings
+RUN mkdir -p /data/recordings /data/daily && chown node:node /data/recordings /data/daily
 ARG GIT_SHA=dev
 ENV GIT_SHA=${GIT_SHA}
 LABEL org.opencontainers.image.source="https://github.com/yiminspace/ielts-lab"

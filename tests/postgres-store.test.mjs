@@ -50,7 +50,7 @@ test(
     await provisionDatabase({ adminURL, migrationURL, runtimeURL });
     assert.deepEqual(
       await migrate({ connectionString: migrationURL, runtimeRole }),
-      { direction: "up", count: 1 },
+      { direction: "up", count: 2 },
     );
     assert.deepEqual(
       await migrate({ connectionString: migrationURL, runtimeRole }),
@@ -305,6 +305,84 @@ test(
           "SELECT metadata FROM library_items WHERE mode='demo'",
         );
         assert.equal(row.metadata.file, undefined);
+      },
+    );
+    await t.test(
+      "daily lesson creation shares the attempt transaction, isolates owners, and protects concurrent versions",
+      async () => {
+        const listening = {
+          ...attempt(),
+          kind: "listening",
+          itemId: "demo-listening",
+        };
+        const lesson = {
+          id: "daily-" + "a".repeat(40),
+          attemptId: listening.id,
+          version: 1,
+          status: "pending",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          source: {
+            itemId: listening.itemId,
+            part: 1,
+            transcript: "Original test transcript",
+          },
+          pending: { kind: "generation", requestId: "generation-1" },
+        };
+        const saved = await store.addAttempt(owner, "demo", listening, lesson);
+        assert.equal(saved.created, true);
+        assert.equal(
+          (await store.getDaily(owner, "demo", lesson.id)).attemptId,
+          listening.id,
+        );
+        assert.equal(
+          (await store.addAttempt(owner, "demo", listening, lesson)).created,
+          false,
+        );
+        assert.equal((await store.listDaily(owner, "demo")).length, 1);
+        assert.equal(await store.getDaily(other, "demo", lesson.id), null);
+        assert.equal(await store.getDaily(owner, "archive", lesson.id), null);
+        assert.equal(
+          (await store.pool.query("SELECT * FROM daily_lessons")).rowCount,
+          0,
+        );
+        const writes = await Promise.allSettled(
+          [store, second].map((connection, i) =>
+            connection.mutateDaily(owner, "demo", lesson.id, (value) => {
+              if (value.version !== 1)
+                throw Object.assign(new Error("Version conflict"), {
+                  status: 409,
+                });
+              return { ...value, draft: `Original writer ${i}` };
+            }),
+          ),
+        );
+        assert.equal(
+          writes.filter((value) => value.status === "fulfilled").length,
+          1,
+        );
+        assert.equal(
+          writes.find((value) => value.status === "rejected").reason.status,
+          409,
+        );
+        assert.equal(
+          (await store.getDaily(owner, "demo", lesson.id)).version,
+          2,
+        );
+        const failedAttempt = { ...listening, id: randomUUID() };
+        await assert.rejects(
+          store.addAttempt(owner, "demo", failedAttempt, {
+            ...lesson,
+            id: "invalid-id",
+            attemptId: failedAttempt.id,
+          }),
+        );
+        assert.equal(
+          (await store.getProgress(owner, "demo")).attempts.some(
+            (value) => value.id === failedAttempt.id,
+          ),
+          false,
+        );
       },
     );
     await t.test(

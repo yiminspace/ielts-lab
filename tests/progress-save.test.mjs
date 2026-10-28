@@ -155,3 +155,61 @@ test("a network failure retains the warning until a subsequent acknowledged save
   await f.flush();
   assert.equal(f.api.useSaveError(), "");
 });
+
+test("only fresh submissions carry the Daily trigger; importing old attempts does not", async () => {
+  const f = fixture();
+  await f.api.hydrateProgress("demo");
+  const oldId = randomUUID();
+  f.api.importProgress({
+    attempts: [
+      {
+        id: oldId,
+        itemId: "demo-listening",
+        title: "Original imported history",
+        kind: "listening",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+    ],
+    bookmarks: [],
+    drafts: {},
+    notes: {},
+  });
+  await f.flush();
+  assert.equal(f.requests[0].headers["X-IELTS-New-Attempts"], undefined);
+  f.api.recordAttempt({
+    itemId: "demo-listening",
+    title: "Original newly submitted practice",
+    kind: "listening",
+  });
+  const newId = f.api.getProgress().attempts[0].id;
+  await f.flush();
+  assert.equal(f.requests[1].headers["X-IELTS-New-Attempts"], newId);
+  f.api.saveNote("demo-listening", "An original follow-up note.");
+  await f.flush();
+  assert.equal(f.requests[2].headers["X-IELTS-New-Attempts"], undefined);
+});
+
+test("unacknowledged Daily trigger IDs survive rehydration and retry with the same attempt", async () => {
+  let fail = true;
+  const f = fixture(async () => {
+    if (fail) throw new Error("Original simulated interrupted save");
+    return { ok: true, status: 200, text: async () => "" };
+  });
+  await f.api.hydrateProgress("demo");
+  f.api.recordAttempt({
+    itemId: "demo-listening",
+    title: "Original interrupted practice",
+    kind: "listening",
+  });
+  const id = f.api.getProgress().attempts[0].id;
+  await f.flush();
+  assert.equal(f.requests[0].headers["X-IELTS-New-Attempts"], id);
+  fail = false;
+  await f.api.hydrateProgress("demo");
+  await settle();
+  assert.equal(f.requests.at(-1).headers["X-IELTS-New-Attempts"], id);
+  assert.equal(f.api.getProgress().attempts.length, 1);
+  f.api.saveNote("demo-listening", "The save was acknowledged.");
+  await f.flush();
+  assert.equal(f.requests.at(-1).headers["X-IELTS-New-Attempts"], undefined);
+});

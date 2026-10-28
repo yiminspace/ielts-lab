@@ -108,6 +108,7 @@ export async function migrate({
         "practice_sessions",
         "attempts",
         "recordings",
+        "daily_lessons",
         "library_items",
         "library_papers",
       ]) {

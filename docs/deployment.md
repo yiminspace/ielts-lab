@@ -7,12 +7,12 @@ recordings, answers or runtime credentials.
 
 ## Services and public routes
 
-| Service | Container port | Route |
-|---|---|---|
-| `ielts-web` | 4317 | `https://ielts.yiminlab.site/` |
-| `ielts-api` | 4318 | `/api/*` and `/media/*` |
-| API health | 4318 | `/health`, `{status,service,version}` |
-| Web health | 4317 | `/web-health`, `{status,service,version}` |
+| Service     | Container port | Route                                     |
+| ----------- | -------------- | ----------------------------------------- |
+| `ielts-web` | 4317           | `https://ielts.yiminlab.site/`            |
+| `ielts-api` | 4318           | `/api/*` and `/media/*`                   |
+| API health  | 4318           | `/health`, `{status,service,version}`     |
+| Web health  | 4317           | `/web-health`, `{status,service,version}` |
 
 `version` is the built Git commit SHA; a local unversioned build reports `dev`.
 The API verifies AuthKit identities, restricts them to `OWNER_USER_ID`, then
@@ -46,7 +46,7 @@ the authorization boundary. Native audio/video Range requests use this cookie.
    key must use `restrict,command="/usr/local/lib/ielts-lab/ssh-entry.py"`.
    A narrowly scoped sudo rule permits only `/usr/local/sbin/ielts-release`;
    that root-owned script independently validates argument count, image digests,
-   fixed GHCR repositories and the bounded two-file configuration payload.
+   fixed GHCR repositories and the bounded two-file legacy / four-file learning configuration payload.
 6. Generate a dedicated IELTS age identity on a trusted workstation. Keep a
    recovery copy in a password manager, commit only its public recipient in
    `.sops.yaml`, and create the two ciphertexts described in `secrets/README.md`.
@@ -90,14 +90,32 @@ cannot be assumed to mask passwords found inside encrypted files.
 
 ## Release flow
 
-`Release IELTS` runs only from `main`; its verification job runs tests, builds
-and image isolation checks. It then publishes `sha-<commit>` tags and deploys
-using exact `sha256` digests. The build jobs never receive production secrets.
-The protected deployment job decrypts the two configuration files and streams a
-bounded tar payload through SSH to the fixed release entry point.
-SSH keepalives preserve that connection during a slow, bounded registry transfer.
+`Release IELTS` builds only from `main`; its verification job runs tests, production builds
+and image isolation checks. Private runtime source is built inside the private
+`yiminspace/agent-runtime` repository using its own `GITHUB_TOKEN`. Its
+`consumer-image.yml` workflow accepts a full IELTS commit SHA already reachable
+from public `main`, validates the runtime pin and lock, runs offline Python tests,
+and publishes `ghcr.io/yiminspace/ielts-learning:sha-<consumer commit>`.
+The only uploaded artifact is `learning-image.json`, containing fixed revisions
+and an immutable image digest; it contains no private source or credentials.
 
-The server resolves both requested GHCR digests before changing application
+A trusted maintainer then dispatches `release.yml` on IELTS `main`, passing
+`learning_digest` from that receipt. The build jobs publish same-commit API/Web
+images without production configuration. The protected production job decrypts
+`api.env.sops`, `migration.env.sops`, `api-learning.env.sops`, and `learning.env.sops`,
+validates isolated Node/learning credentials and fixed service destinations, then
+streams exactly four bounded regular env files to the fixed release command.
+Pushes to `main` verify/build but do not deploy before the private image is ready.
+SSH keepalives preserve that connection during bounded registry transfers.
+
+The current trusted command is `ielts-release API_DIGEST WEB_DIGEST LEARNING_DIGEST SHA`.
+The old two-image / three-argument protocol is retained only for legacy deployments.
+An administrator installs the reviewed root-owned release entry, validator, base
+Compose and learning overlay before the first three-image release; CI cannot replace
+these trusted host files. `data/daily` belongs to UID 1000 and `data/runtime` to
+UID 10001, both mode 0700, with existing archive and recordings retained.
+
+The server resolves all requested GHCR digests before changing application
 state. It first checks the config-derived cache tag, otherwise pulls the verified
 single linux/amd64 child manifest. The requested CI index digest is retained in
 the release record; provenance entries are not runtime images. If the daemon's network/proxy route fails,
@@ -123,11 +141,14 @@ IDs for reboot recovery. Fixed `ielts-local` tags are derived from the remotely
 verified config digest, identify loaded or preloaded images, and retain validated
 images when other platform releases prune dangling images. An existing cache tag
 is revalidated against the remote manifest, raw config and rootfs before reuse.
-API/Web health must match the
-same commit SHA. A successful release saves non-secret immutable
+API/Web/learning authenticated health must match the
+same commit SHA. The learning liveness endpoint remains public inside the container;
+version and capability endpoints require the internal service token. A successful release saves non-secret immutable
 image pointers for host reboot recovery. Failed startup restores the previous
 configuration/images when available; schema rollback is not automatic and
-requires a reviewed, backward-compatible migration strategy.
+requires a reviewed compatibility strategy. The first 001→002 upgrade is additive,
+but the old schema-1 API refuses schema-2 on startup; preserve the pre-upgrade backup
+and use a verified schema-2-compatible application for recovery rather than dropping new data.
 
 Normal operations use CI/CD. Do not build images on the production server.
 Configuration-only changes still need a release so the running container reads

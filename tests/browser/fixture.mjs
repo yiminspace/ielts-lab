@@ -7,7 +7,7 @@ import { migrate } from "../../services/api/scripts/migrate.mjs";
 
 export const owner = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 export const other = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
-export async function startBrowserFixture() {
+export async function startBrowserFixture(options = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "ielts-browser-"));
   const adminURL = process.env.IELTS_TEST_ADMIN_DATABASE_URL;
   const suffix = `browser_${process.pid}_${Date.now()}`;
@@ -22,6 +22,7 @@ export async function startBrowserFixture() {
         app.server.closeAllConnections();
         app.server.close(resolve);
       });
+      await app.daily?.close?.();
       await app.store?.close?.();
     }
     if (admin) {
@@ -67,6 +68,8 @@ export async function startBrowserFixture() {
       dev: true,
       frontendPort: Number(process.env.IELTS_BROWSER_PORT),
       allowInsecureTest: true,
+      runtimeClient: options.runtimeClient,
+      dailyPollInterval: options.dailyPollInterval,
       // Synthetic identity verifier is injected only in this test constructor.
       // Real routing, owner checks, cookies, CAS, PostgreSQL and recordings are exercised.
       verifyIdentity: async (token) => {

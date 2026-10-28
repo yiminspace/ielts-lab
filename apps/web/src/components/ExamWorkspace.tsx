@@ -47,6 +47,7 @@ import {
   splitByKeyboard,
 } from "../lib/computer-test.mjs";
 import PracticeFrame from "./PracticeFrame";
+import { DailyAttemptBanner } from "./DailyWorkspace";
 import "../exam.css";
 
 type Answers = Record<string, string | string[]>;
@@ -811,7 +812,9 @@ function ExamSession({
         ) : (
           <>
             {(part !== "summary" || row.slots > 1) && (
-              <span className={`exam-status ${status}`}>{statusText[status]}</span>
+              <span className={`exam-status ${status}`}>
+                {statusText[status]}
+              </span>
             )}
             <span className="exam-correct-answer">
               <span>
@@ -1064,7 +1067,9 @@ function ExamSession({
                         ? completedBlankAnswer(slot.row)
                         : null;
                     if (slot && completed !== null)
-                      return <CompletedBlank row={slot.row} value={completed} />;
+                      return (
+                        <CompletedBlank row={slot.row} value={completed} />
+                      );
                     return slot ? (
                       <InlineControl
                         row={slot.row}
@@ -1247,7 +1252,11 @@ function ExamSession({
                 }
                 onEnded={() => {
                   setAudioPlaying(false);
-                  if (playbackQuestion === null && loop && selectedLine !== null)
+                  if (
+                    playbackQuestion === null &&
+                    loop &&
+                    selectedLine !== null
+                  )
                     playLine(selectedLine, playbackQuestion);
                 }}
               />
@@ -1341,6 +1350,17 @@ function ExamSession({
       <div
         className={`exam-workspace ${listening ? "exam-listening" : "exam-reading"} ${submitted ? "exam-review" : ""}`}
       >
+        {listening && submitted && (
+          <DailyAttemptBanner
+            itemId={item.id}
+            attemptId={
+              reviewAttempt?.id ||
+              getProgress().attempts.find(
+                (attempt) => attempt.itemId === item.id,
+              )?.id
+            }
+          />
+        )}
         {reviewing && !reviewAttempt?.answers && (
           <p className="exam-unavailable" role="status">
             这条历史记录只有汇总成绩，没有保存逐题答案。

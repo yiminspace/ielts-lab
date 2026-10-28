@@ -1,0 +1,467 @@
+.daily-workspace {
+  max-width: 1240px;
+  margin: 0 auto;
+}
+.daily-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 22px;
+  color: var(--muted);
+}
+.daily-workspace .page-heading {
+  margin-bottom: 20px;
+}
+.daily-result-entry {
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  text-align: left;
+}
+.daily-result-entry p {
+  margin: 4px 0 0;
+  font-size: 14px;
+}
+.daily-result-entry a {
+  flex-shrink: 0;
+}
+.daily-library {
+  border-top: 1px solid var(--line);
+}
+.daily-lesson-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 24px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.daily-lesson-row:hover {
+  background: var(--panel);
+}
+.daily-lesson-row h2 {
+  margin: 0 0 5px;
+  font-size: 18px;
+}
+.daily-lesson-row p {
+  margin: 0;
+  font-size: 14px;
+}
+.daily-lesson-row > div {
+  flex: 1;
+  min-width: 0;
+}
+.daily-part {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.daily-state {
+  font-size: 13px;
+  color: var(--muted);
+}
+.daily-state-ready,
+.daily-correct {
+  color: var(--green);
+}
+.daily-state-failed,
+.daily-incorrect {
+  color: var(--danger);
+}
+.daily-empty {
+  padding: 60px 20px;
+  text-align: center;
+  max-width: 560px;
+  margin: 0 auto;
+}
+.daily-empty > svg {
+  margin-bottom: 20px;
+}
+.daily-empty .button {
+  margin-top: 12px;
+}
+.daily-context {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-block: 1px solid var(--line);
+  padding: 14px 0;
+}
+.daily-context p {
+  flex: 1;
+  margin: 0;
+  font-size: 14px;
+}
+.daily-context > span {
+  white-space: nowrap;
+  font-size: 14px;
+}
+.daily-boundary {
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 12px 0;
+}
+.daily-service-note {
+  padding: 24px;
+  margin: 20px 0;
+  border-left: 3px solid var(--muted);
+  background: var(--panel);
+}
+.daily-service-note p:last-child {
+  margin-bottom: 0;
+}
+.daily-alert {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  margin: 14px 0;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+}
+.daily-alert span {
+  flex: 1;
+}
+.daily-tabs {
+  display: flex;
+  gap: 24px;
+  border-bottom: 1px solid var(--line);
+  margin-top: 26px;
+}
+.daily-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 3px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  border-radius: 0;
+}
+.daily-tabs button[aria-selected="true"] {
+  border-bottom-color: var(--ink);
+  font-weight: 650;
+}
+.daily-working {
+  padding: 12px 16px;
+  background: var(--panel);
+  margin: 16px 0;
+}
+.daily-reading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 36px;
+  padding-top: 28px;
+  align-items: start;
+}
+.daily-passage {
+  padding-right: 32px;
+  border-right: 1px solid var(--line);
+}
+.daily-passage > p {
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1.9;
+  white-space: pre-wrap;
+}
+.daily-passage details p,
+.daily-message p,
+.daily-student-writing {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.daily-section-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  justify-content: space-between;
+}
+.daily-section-heading > span {
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.daily-question {
+  margin: 0 0 22px;
+  padding: 0 0 20px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+.daily-question legend {
+  margin-bottom: 12px;
+  color: var(--ink);
+  font-weight: 550;
+  line-height: 1.7;
+}
+.daily-question legend > span {
+  color: var(--muted);
+  margin-right: 4px;
+}
+.daily-options {
+  display: grid;
+  gap: 8px;
+}
+.daily-options label {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  cursor: pointer;
+  padding: 5px 0;
+}
+.daily-options input {
+  accent-color: var(--ink);
+}
+.daily-question input:not([type="radio"]) {
+  width: 100%;
+}
+.daily-answer-rule {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.daily-reading-result {
+  margin-top: 16px;
+  padding: 14px;
+  background: var(--panel);
+  font-size: 14px;
+}
+.daily-reading-result p {
+  margin: 8px 0;
+}
+.daily-reading-result blockquote {
+  margin: 12px 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--muted);
+  line-height: 1.8;
+}
+.daily-completion {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--green);
+}
+.daily-composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.daily-composer-actions > span {
+  flex: 1;
+  color: var(--muted);
+  font-size: 13px;
+}
+.daily-conversation,
+.daily-writing {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 28px 0;
+}
+.daily-conversation-topic {
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--line);
+}
+.daily-opening {
+  font-size: 22px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+.daily-conversation-log {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 28px 0;
+}
+.daily-message {
+  max-width: 88%;
+  padding: 16px 20px;
+  border-left: 2px solid var(--line);
+}
+.daily-message > span,
+.daily-writing-feedback > span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+.daily-message p {
+  color: var(--ink);
+  line-height: 1.85;
+}
+.daily-message-user {
+  align-self: flex-end;
+  background: var(--panel);
+  border-left: 0;
+}
+.daily-message .daily-feedback-zh {
+  font-size: 14px;
+  color: var(--muted);
+}
+.daily-message-excluded {
+  border-left-style: dashed;
+}
+.daily-message-excluded > p {
+  color: var(--muted);
+}
+.daily-conversation-end {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.daily-message button {
+  font-size: 13px;
+  padding: 6px 9px;
+}
+.daily-expression-help {
+  padding: 18px 20px;
+  border-left: 2px solid var(--green);
+  background: var(--panel);
+  margin-bottom: 24px;
+}
+.daily-expression-help p {
+  margin-bottom: 0;
+  color: var(--ink);
+  line-height: 1.8;
+}
+.daily-conversation-composer > label,
+.daily-writing > label,
+.daily-writing-discussion label {
+  display: block;
+  font-size: 14px;
+  font-weight: 550;
+  margin-bottom: 8px;
+}
+.daily-conversation-composer textarea,
+.daily-writing textarea {
+  width: 100%;
+}
+.daily-levels {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+.daily-levels button[aria-pressed="true"] {
+  color: var(--surface);
+  background: var(--ink);
+  border-color: var(--ink);
+}
+.daily-writing-prompt {
+  padding-bottom: 20px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--line);
+}
+.daily-writing-feedback {
+  padding: 22px 0;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 24px;
+}
+.daily-student-writing {
+  font-size: 17px;
+  line-height: 1.85;
+  color: var(--ink);
+}
+.daily-correction {
+  padding-left: 15px;
+  border-left: 2px solid var(--line);
+  margin-bottom: 18px;
+}
+.daily-correction p {
+  margin-bottom: 5px;
+}
+.daily-correction del {
+  color: var(--muted);
+}
+.daily-writing-discussion {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+.daily-writing-discussion > button {
+  margin-top: 10px;
+}
+.daily-writing-discussion article {
+  padding: 12px 0;
+}
+.daily-recorder {
+  margin-top: 16px;
+}
+.daily-recorder-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.daily-recorder-actions > span {
+  color: var(--muted);
+  font-size: 13px;
+}
+.daily-pending-recording {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+}
+.daily-pending-recording > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+@media (max-width: 760px) {
+  .daily-reading {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .daily-passage {
+    padding-right: 0;
+    padding-bottom: 16px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .daily-lesson-row {
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .daily-lesson-row > div {
+    flex-basis: 70%;
+  }
+  .daily-state {
+    margin-left: 56px;
+  }
+  .daily-context {
+    flex-wrap: wrap;
+    gap: 8px 12px;
+  }
+  .daily-context p {
+    flex-basis: 75%;
+  }
+  .daily-result-entry {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .daily-tabs {
+    gap: 18px;
+  }
+  .daily-tabs button {
+    font-size: 14px;
+  }
+  .daily-message {
+    max-width: 95%;
+    padding: 14px;
+  }
+  .daily-opening {
+    font-size: 20px;
+  }
+  .daily-recorder-actions {
+    flex-wrap: wrap;
+  }
+  .daily-workspace button {
+    min-height: 44px;
+  }
+}
