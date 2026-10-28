@@ -702,6 +702,18 @@ function ExamSession({
     if (audio.current) {
       audio.current.pause();
       audio.current.currentTime = 0;
+      if (listening && src) {
+        setAudioError("");
+        // Keep play() in the confirmation click so retry retains the browser's
+        // user activation, including when the initial draft was submitted.
+        void audio.current.play().catch((error: unknown) => {
+          setAudioError(
+            error instanceof DOMException && error.name === "NotAllowedError"
+              ? "浏览器阻止了自动播放，请点击播放按钮开始听力。"
+              : "播放未能启动，请点击音频控件重试。",
+          );
+        });
+      }
     }
   }
   function captureSelection() {

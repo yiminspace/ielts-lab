@@ -196,6 +196,112 @@ for (const kind of ["listening", "reading"] as const)
     expect(errors).toEqual([]);
   });
 
+for (const entry of ["submitted draft", "history review"])
+  test(`retrying listening from ${entry} starts audio from zero and preserves the previous attempt`, async ({
+    page,
+    context,
+  }) => {
+    await ownerContext(context);
+    await page.goto("/#/item/demo-listening");
+    await expect(
+      page.getByRole("button", { name: "交卷检查", exact: true }),
+    ).toBeVisible();
+    const previousIds = await page.evaluate(async () =>
+      (await (await fetch("/api/progress")).json()).attempts.map(
+        (attempt: { id: string }) => attempt.id,
+      ),
+    );
+    await page
+      .locator(
+        ".exam-columns input:not([type]), .exam-columns input[type=text]",
+      )
+      .first()
+      .fill("original retry answer");
+    await expect(page.locator(".exam-timer strong")).not.toHaveText("00:00");
+    await page.getByRole("button", { name: "交卷检查", exact: true }).click();
+    await page.getByRole("button", { name: "确认交卷", exact: true }).click();
+    await expect
+      .poll(async () => {
+        const progress = await page.evaluate(async () =>
+          (await fetch("/api/progress")).json(),
+        );
+        return progress.attempts.some(
+          (attempt: { id: string }) => !previousIds.includes(attempt.id),
+        );
+      })
+      .toBe(true);
+    const before = await page.evaluate(async () =>
+      (await fetch("/api/progress")).json(),
+    );
+    const attempt = before.attempts.find(
+      (value: { id: string }) => !previousIds.includes(value.id),
+    );
+    if (entry === "history review")
+      await page.goto(`/#/item/demo-listening?review=${attempt.id}`);
+    else await page.reload();
+    await expect(
+      page.getByRole("button", { name: "重新作答", exact: true }),
+    ).toBeVisible();
+    const audio = page.locator('audio[aria-label="听力录音"]');
+    await expect
+      .poll(() =>
+        audio.evaluate((element: HTMLAudioElement) => element.readyState),
+      )
+      .toBeGreaterThanOrEqual(2);
+    const oldPosition = await audio.evaluate(
+      (element: HTMLAudioElement, atEnd) => {
+        element.pause();
+        element.currentTime = atEnd
+          ? element.duration
+          : Math.min(8, element.duration / 2);
+        return element.currentTime;
+      },
+      entry === "history review",
+    );
+    await page.getByRole("button", { name: "重新作答", exact: true }).click();
+    await page.getByRole("button", { name: "继续查看", exact: true }).click();
+    expect(
+      await audio.evaluate((element: HTMLAudioElement) => element.paused),
+    ).toBe(true);
+    expect(
+      await audio.evaluate((element: HTMLAudioElement) => element.currentTime),
+    ).toBeCloseTo(oldPosition, 1);
+    await page.getByRole("button", { name: "重新作答", exact: true }).click();
+    // Only the actual confirmation click may start playback. Do not call play()
+    // from the test: that would hide the missing retry behavior.
+    await page.getByRole("button", { name: "开始练习", exact: true }).click();
+    await expect(page.locator(".exam-timer strong")).toHaveText("00:00");
+    await expect
+      .poll(() => audio.evaluate((element: HTMLAudioElement) => element.paused))
+      .toBe(false);
+    await expect
+      .poll(() =>
+        audio.evaluate((element: HTMLAudioElement) => element.currentTime),
+      )
+      .toBeGreaterThan(0);
+    expect(
+      await audio.evaluate((element: HTMLAudioElement) => element.currentTime),
+    ).toBeLessThan(oldPosition);
+    expect(
+      await audio.evaluate((element: HTMLAudioElement) => element.ended),
+    ).toBe(false);
+    await expect(
+      page
+        .locator(
+          ".exam-columns input:not([type]), .exam-columns input[type=text]",
+        )
+        .first(),
+    ).toHaveValue("");
+    await expect(
+      page.getByRole("button", { name: "交卷检查", exact: true }),
+    ).toBeVisible();
+    await expect(page.locator(".exam-timer strong")).not.toHaveText("00:00");
+    const after = await page.evaluate(async () =>
+      (await fetch("/api/progress")).json(),
+    );
+    expect(after.attempts).toEqual(before.attempts);
+  });
+
 test("failed uploads survive reload; another device can play, download and delete the saved recording", async ({
   browser,
 }) => {
