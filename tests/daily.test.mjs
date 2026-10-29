@@ -376,6 +376,45 @@ for (const count of [3, 4]) {
   });
 }
 
+for (const [name, answers, score] of [
+  ["all unanswered", {}, 0],
+  [
+    "partially answered with cleared and whitespace gaps",
+    { q0: "Monday", q1: "", q3: "   " },
+    1,
+  ],
+]) {
+  test(`daily reading accepts ${name} and counts unanswered questions as incorrect`, async (t) => {
+    const { service } = await fixture(t);
+    const seed = await service.ensure(owner, attempt());
+    let lesson = await completed(service, seed.id);
+    const body = {
+      expectedVersion: lesson.version,
+      requestId: randomUUID(),
+      answers,
+    };
+    lesson = await service.action(owner, seed.id, "reading", body);
+    const submitted = lesson.reading.attempts[0];
+    assert.equal(submitted.score, score);
+    assert.equal(submitted.total, 5);
+    assert.equal(
+      submitted.results.filter((result) => !result.correct).length,
+      5 - score,
+    );
+    assert.equal(submitted.results[2].userAnswer, "");
+    assert.equal(lesson.content.reading.questions[2].answer, "Monday");
+    assert.equal(
+      (await service.action(owner, seed.id, "reading", body)).reading.attempts
+        .length,
+      1,
+    );
+    assert.equal(
+      (await service.get(owner, seed.id)).reading.attempts[0].score,
+      score,
+    );
+  });
+}
+
 test("daily generation hides keys until deterministic reading grading and rejects unsupported evidence", async (t) => {
   const { service, runtime } = await fixture(t);
   const seed = await service.ensure(owner, attempt());

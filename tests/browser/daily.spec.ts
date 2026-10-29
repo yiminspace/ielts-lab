@@ -527,6 +527,78 @@ test.describe("Daily real API with an original injected runtime", () => {
   });
 });
 
+test.describe("Daily reading allows unanswered questions", () => {
+  let fixture: Awaited<ReturnType<typeof startBrowserFixture>>;
+  test.beforeAll(async () => {
+    fixture = await startBrowserFixture({
+      runtimeClient: runtime,
+      dailyPollInterval: 40,
+    });
+  });
+  test.afterAll(async () => {
+    await fixture?.stop();
+  });
+
+  for (const partial of [false, true]) {
+    test(
+      partial
+        ? "submits partial answers and retains results after refresh"
+        : "submits a completely blank reading exercise",
+      async ({ page, context }) => {
+        await login(context, fixture);
+        const seed = await fixture.app.daily.ensure(
+          fixture.hosted ? owner : "00000000-0000-4000-8000-000000000001",
+          {
+            id: crypto.randomUUID(),
+            itemId: "demo-listening",
+            kind: "listening",
+            answers: {},
+            createdAt: new Date().toISOString(),
+          },
+        );
+        await page.goto(`/#/daily/${seed.id}`);
+        await page.getByRole("tab", { name: "阅读理解" }).click();
+        const submit = page.getByRole("button", {
+          name: "提交阅读答案",
+          exact: true,
+        });
+        await expect(submit).toBeEnabled();
+        if (partial) {
+          await page
+            .getByRole("radio", { name: "Monday", exact: true })
+            .check();
+          await page
+            .getByRole("textbox", { name: "第 3 题答案", exact: true })
+            .fill("garden");
+          await page
+            .getByRole("textbox", { name: "第 3 题答案", exact: true })
+            .fill("");
+        }
+        await submit.click();
+        await expect(
+          page.getByText(
+            `本次阅读答对 ${partial ? 1 : 0} / 5 题。原文与解析会保留。`,
+            { exact: true },
+          ),
+        ).toBeVisible();
+        await expect(page.locator(".daily-reading-result")).toHaveCount(5);
+        await expect(
+          page.locator(".daily-reading-result .daily-incorrect"),
+        ).toHaveCount(partial ? 4 : 5);
+        await page.reload();
+        await page.getByRole("tab", { name: "阅读理解" }).click();
+        await expect(
+          page.getByText(
+            `本次阅读答对 ${partial ? 1 : 0} / 5 题。原文与解析会保留。`,
+            { exact: true },
+          ),
+        ).toBeVisible();
+        await expect(submit).toHaveCount(0);
+      },
+    );
+  }
+});
+
 test.describe("Daily without configured model services", () => {
   let fixture: Awaited<ReturnType<typeof startBrowserFixture>>;
   test.beforeAll(async () => {
