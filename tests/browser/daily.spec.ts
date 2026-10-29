@@ -542,13 +542,13 @@ test.describe("Daily real API with an original injected runtime", () => {
 
 test.describe("Daily reading allows unanswered questions", () => {
   let fixture: Awaited<ReturnType<typeof startBrowserFixture>>;
-  test.beforeAll(async () => {
+  test.beforeEach(async () => {
     fixture = await startBrowserFixture({
       runtimeClient: runtime,
       dailyPollInterval: 40,
     });
   });
-  test.afterAll(async () => {
+  test.afterEach(async () => {
     await fixture?.stop();
   });
 
