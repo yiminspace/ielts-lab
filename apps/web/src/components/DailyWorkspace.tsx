@@ -32,6 +32,7 @@ import {
   type PendingRecording,
 } from "../lib/recordings";
 import "../daily.css";
+import DailyPassage from "./DailyPassage";
 
 const noCapabilities: DailyCapabilities = {
   runtime: false,
@@ -654,7 +655,7 @@ function Reading({
     <div className="daily-reading">
       <article className="daily-passage">
         <h2>听力原文</h2>
-        <p lang="en">{reading.passage}</p>
+        <DailyPassage lessonId={lesson.id} text={reading.passage} />
         <details>
           <summary>查看中文意思</summary>
           <p>{reading.translation}</p>

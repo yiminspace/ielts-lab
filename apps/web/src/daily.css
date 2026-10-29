@@ -167,6 +167,30 @@
   line-height: 1.9;
   white-space: pre-wrap;
 }
+.daily-highlight-tools {
+  position: sticky;
+  top: 8px;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.daily-highlight-tools button {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+.daily-highlight-tools > span {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 12px;
+}
+.daily-passage-text mark {
+  color: var(--ink);
+  background: #ffe58a;
+}
 .daily-passage details p,
 .daily-message p,
 .daily-student-writing {

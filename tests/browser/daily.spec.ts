@@ -229,6 +229,73 @@ test.describe("Daily real API with an original injected runtime", () => {
     ).toMatchObject({ source: { part: 1 }, target_band: 6.5 });
 
     await page.getByRole("tab", { name: "阅读理解" }).click();
+    const passage = page.locator(".daily-passage-text");
+    await passage.scrollIntoViewIfNeeded();
+    // Use a real mouse drag for the reported missing selection action.
+    const points = await passage.evaluate((element) => {
+      const node = element.firstChild!;
+      const start = element.textContent!.indexOf("new conversation");
+      const range = document.createRange();
+      range.setStart(node, start);
+      range.collapse(true);
+      const first = range.getBoundingClientRect();
+      range.setStart(node, start + "new conversation".length);
+      range.collapse(true);
+      const last = range.getBoundingClientRect();
+      return {
+        x: first.x,
+        y: first.y + first.height / 2,
+        endX: last.x,
+        endY: last.y + last.height / 2,
+      };
+    });
+    await page.mouse.move(points.x, points.y);
+    await page.mouse.down();
+    await page.mouse.move(points.endX, points.endY, { steps: 12 });
+    await page.mouse.up();
+    await expect(
+      page.getByRole("button", { name: "高亮选中", exact: true }),
+    ).toBeEnabled();
+    await page.getByRole("button", { name: "高亮选中", exact: true }).click();
+    await expect(passage.locator("mark")).toHaveText("new conversation");
+    await page.reload();
+    await page.getByRole("tab", { name: "阅读理解" }).click();
+    await expect(passage.locator("mark")).toHaveText("new conversation");
+    await page.getByRole("tab", { name: "主题交流" }).click();
+    await page.getByRole("tab", { name: "阅读理解" }).click();
+    await expect(passage.locator("mark")).toHaveText("new conversation");
+    // Partial removal must retain the two unselected parts of a mark.
+    await passage.locator("mark").evaluate((element) => {
+      const range = document.createRange();
+      range.setStart(element.firstChild!, 3);
+      range.setEnd(element.firstChild!, 6);
+      const selected = window.getSelection()!;
+      selected.removeAllRanges();
+      selected.addRange(range);
+    });
+    await page
+      .getByRole("button", { name: "清除选中高亮", exact: true })
+      .click();
+    await expect(passage.locator("mark")).toHaveText(["new", "nversation"]);
+    // Selecting translated text must not enable actions on English offsets.
+    await page.getByText("查看中文意思", { exact: true }).click();
+    await page.locator(".daily-passage details p").evaluate((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      window.getSelection()!.removeAllRanges();
+      window.getSelection()!.addRange(range);
+    });
+    await expect(
+      page.getByRole("button", { name: "高亮选中", exact: true }),
+    ).toBeDisabled();
+    await page
+      .getByRole("button", { name: "清除全部高亮", exact: true })
+      .click();
+    await expect(passage.locator("mark")).toHaveCount(0);
+    await page.reload();
+    await page.getByRole("tab", { name: "阅读理解" }).click();
+    await expect(passage).toBeVisible();
+    await expect(passage.locator("mark")).toHaveCount(0);
     await expect(page.locator(".daily-reading-result")).toHaveCount(0);
     await page.getByRole("radio", { name: "Monday", exact: true }).check();
     await page.getByRole("radio", { name: "True", exact: true }).check();
