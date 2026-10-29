@@ -296,6 +296,85 @@ test("daily local entities isolate owner/mode and enforce CAS plus exact request
   );
 });
 
+test("daily retakes reuse one course across concurrent stores and preserve generated progress", async (t) => {
+  const { service, root, runtime } = await fixture(t);
+  const original = await service.ensure(owner, attempt());
+  await completed(service, original.id);
+  const saved = await service.action(owner, original.id, "draft", {
+    expectedVersion: (await service.get(owner, original.id)).version,
+    requestId: randomUUID(),
+    section: "writing",
+    text: "Keep my original draft",
+    level: "basic",
+  });
+  const seeds = await Promise.all(
+    Array.from({ length: 8 }, () => service.seed(owner, attempt())),
+  );
+  const results = await Promise.all(
+    seeds.map((seed) =>
+      createLocalDailyStore(root).ensureDaily(owner, "demo", seed),
+    ),
+  );
+  for (const result of results)
+    assert.deepEqual(
+      result,
+      await createLocalDailyStore(root).getDaily(owner, "demo", original.id),
+    );
+  await service.tick();
+  assert.equal((await service.list(owner)).lessons.length, 1);
+  assert.equal(
+    (await service.get(owner, original.id)).writing.draft.text,
+    saved.writing.draft.text,
+  );
+  assert.equal(
+    runtime.calls.filter((call) => call.workflow === "ielts.lesson").length,
+    1,
+  );
+});
+
+test("daily legacy duplicates stay readable while listing and retakes reuse the earliest course", async (t) => {
+  const { service, root } = await fixture(t);
+  const first = {
+    ...(await service.seed(owner, attempt())),
+    id: "daily-" + "a".repeat(40),
+    createdAt: "2026-01-01T00:00:00.000Z",
+  };
+  const duplicate = {
+    ...(await service.seed(owner, attempt())),
+    id: "daily-" + "b".repeat(40),
+    createdAt: "2026-01-02T00:00:00.000Z",
+  };
+  const directory = path.join(root, owner, "demo");
+  await fs.mkdir(directory, { recursive: true });
+  for (const lesson of [first, duplicate])
+    await fs.writeFile(
+      path.join(directory, `${lesson.id}.json`),
+      JSON.stringify(lesson),
+    );
+  assert.equal((await service.ensure(owner, attempt())).id, first.id);
+  assert.deepEqual(
+    (await service.list(owner)).lessons.map((lesson) => lesson.id),
+    [first.id],
+  );
+  assert.equal((await service.get(owner, duplicate.id)).id, duplicate.id);
+  await service.tick();
+  assert.equal((await service.get(owner, duplicate.id)).status, "pending");
+});
+
+test("daily first concurrent creation cannot overwrite another store's course", async (t) => {
+  const { service, root } = await fixture(t);
+  const seeds = await Promise.all(
+    Array.from({ length: 8 }, () => service.seed(owner, attempt())),
+  );
+  const results = await Promise.all(
+    seeds.map((seed) =>
+      createLocalDailyStore(root).ensureDaily(owner, "demo", seed),
+    ),
+  );
+  for (const result of results) assert.deepEqual(result, results[0]);
+  assert.equal((await service.list(owner)).lessons.length, 1);
+});
+
 test("daily full-paper listening creates four distinct grouped lessons with verified part provenance", async (t) => {
   const { service } = await fixture(t);
   const paperRunId = randomUUID();

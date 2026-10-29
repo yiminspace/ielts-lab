@@ -386,6 +386,18 @@ export class PostgresStore {
       Buffer.byteLength(JSON.stringify(seed)) > 2 * 1024 * 1024
     )
       throw failure(400, "课程内容无效或过大");
+    // Serialize the lookup + insert across API processes within the attempt transaction.
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+      [JSON.stringify([userId, mode, seed.source.itemId])],
+    );
+    const { rows: courses } = await client.query(
+      `SELECT data FROM daily_lessons
+       WHERE user_id=$1 AND mode=$2 AND data->'source'->>'itemId'=$3
+       ORDER BY created_at,id LIMIT 1`,
+      [userId, mode, seed.source.itemId],
+    );
+    if (courses.length) return courses[0].data;
     const { rows } = await client.query(
       `INSERT INTO daily_lessons(user_id,mode,id,attempt_id,version,data,created_at)
        VALUES($1,$2,$3,$4,1,$5::jsonb,$6) ON CONFLICT DO NOTHING RETURNING data`,
@@ -413,7 +425,11 @@ export class PostgresStore {
   async listDaily(userId, mode) {
     return this.transaction(userId, mode, async (client) => {
       const { rows } = await client.query(
-        "SELECT data FROM daily_lessons WHERE user_id=$1 AND mode=$2 ORDER BY created_at DESC,id",
+        `SELECT data FROM (
+           SELECT DISTINCT ON (data->'source'->>'itemId') data,created_at,id
+           FROM daily_lessons WHERE user_id=$1 AND mode=$2
+           ORDER BY data->'source'->>'itemId',created_at,id
+         ) courses ORDER BY created_at DESC,id DESC`,
         [userId, mode],
       );
       return rows.map((row) => row.data);
