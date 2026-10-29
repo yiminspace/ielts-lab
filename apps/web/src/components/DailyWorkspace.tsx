@@ -645,12 +645,6 @@ function Reading({
     send,
   );
   const answers = submitted?.answers || draft.value.answers;
-  const complete = reading.questions.every(
-    (q) =>
-      !!answers[q.id]?.trim() &&
-      (q.kind !== "gap" ||
-        answers[q.id].trim().split(/\s+/).length <= q.max_words),
-  );
   return (
     <div className="daily-reading">
       <article className="daily-passage">
@@ -746,9 +740,10 @@ function Reading({
         ) : (
           <div className="daily-composer-actions">
             <span role="status">{draft.state}</span>
+            <span>可以留空提交，未作答的题目按错误计分。</span>
             <button
               className="button"
-              disabled={disabled || !complete}
+              disabled={disabled}
               onClick={() =>
                 void send("reading", { answers: draft.value.answers }).then(
                   (ok) => {
