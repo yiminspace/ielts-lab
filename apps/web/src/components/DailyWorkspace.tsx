@@ -108,13 +108,13 @@ export function DailyAttemptBanner({
     <aside className="daily-result-entry" aria-label="听后练习">
       <div>
         <strong>把刚听过的，接着读、聊、写。</strong>
-        <p role="status">
+        <span className="daily-result-status" role="status">
           {lesson
             ? dailyStatusText[lesson.status]
             : loaded
               ? "在听后练习中查看生成状态。"
               : "正在查看听后练习…"}
-        </p>
+        </span>
       </div>
       <a
         className="button secondary"
