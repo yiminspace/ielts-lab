@@ -82,9 +82,7 @@ export function DailyAttemptBanner({
         const value = await listDaily();
         if (!alive) return;
         const found = value.lessons.find(
-          (entry) =>
-            entry.source.itemId === itemId &&
-            (!attemptId || entry.attemptId === attemptId),
+          (entry) => entry.source.itemId === itemId,
         );
         setLesson(found || null);
         setLoaded(true);
@@ -353,7 +351,7 @@ export default function DailyWorkspace({ id }: { id?: string }) {
           <p>
             {id && lesson
               ? `来自 ${lesson.source.title} · Part ${lesson.source.part}`
-              : "每次听力完成作答后，自动准备一份阅读、主题交流和写作练习。"}
+              : "每份听力材料首次完成作答后，自动准备一份阅读、主题交流和写作练习；再次作答沿用已有练习。"}
           </p>
         </div>
       </div>

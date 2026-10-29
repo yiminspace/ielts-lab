@@ -61,7 +61,7 @@ export function createLocalDailyStore(root) {
       throw error;
     }
   }
-  async function write(userId, mode, value) {
+  async function write(userId, mode, value, exclusive = false) {
     const dir = await safeDirectory(userId, mode);
     const json = JSON.stringify(value);
     if (Buffer.byteLength(json) > maxEntity)
@@ -81,7 +81,9 @@ export function createLocalDailyStore(root) {
       await handle.sync();
       await handle.close();
       handle = null;
-      await fs.rename(temporary, path.join(dir, `${value.id}.json`));
+      const target = path.join(dir, `${value.id}.json`);
+      if (exclusive) await fs.link(temporary, target);
+      else await fs.rename(temporary, target);
     } finally {
       await handle?.close();
       await fs.unlink(temporary).catch(() => {});
@@ -92,19 +94,32 @@ export function createLocalDailyStore(root) {
     queue = work.catch(() => {});
     return work;
   };
+  async function list(userId, mode) {
+    const entries = await fs.readdir(await safeDirectory(userId, mode), {
+      withFileTypes: true,
+    });
+    const lessons = [];
+    for (const entry of entries)
+      if (entry.isFile() && /^daily-[a-f0-9]{40}\.json$/.test(entry.name)) {
+        const value = await read(userId, mode, entry.name.slice(0, -5));
+        if (value) lessons.push(value);
+      }
+    // Keep legacy duplicates on disk, but reuse the first course and its progress.
+    const unique = new Map();
+    lessons.sort(
+      (a, b) =>
+        a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
+    );
+    for (const lesson of lessons) {
+      const key = lesson.source.itemId;
+      if (!unique.has(key)) unique.set(key, lesson);
+    }
+    return [...unique.values()].reverse();
+  }
   return {
     async listDaily(userId, mode) {
       await queue;
-      const entries = await fs.readdir(await safeDirectory(userId, mode), {
-        withFileTypes: true,
-      });
-      const lessons = [];
-      for (const entry of entries)
-        if (entry.isFile() && /^daily-[a-f0-9]{40}\.json$/.test(entry.name)) {
-          const value = await read(userId, mode, entry.name.slice(0, -5));
-          if (value) lessons.push(value);
-        }
-      return lessons.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      return list(userId, mode);
     },
     async getDaily(userId, mode, id) {
       await queue;
@@ -112,10 +127,17 @@ export function createLocalDailyStore(root) {
     },
     ensureDaily(userId, mode, seed) {
       return serialize(async () => {
-        const existing = await read(userId, mode, seed.id);
+        const existing = (await list(userId, mode)).find(
+          (lesson) => lesson.source.itemId === seed.source.itemId,
+        );
         if (existing) return existing;
-        await write(userId, mode, seed);
-        return seed;
+        try {
+          await write(userId, mode, seed, true);
+          return seed;
+        } catch (error) {
+          if (error.code !== "EEXIST") throw error;
+          return read(userId, mode, seed.id);
+        }
       });
     },
     mutateDaily(userId, mode, id, change) {
@@ -323,7 +345,7 @@ export async function seedDailyLesson(
 ) {
   if (attempt.kind !== "listening") return null;
   const createdAt = stamp();
-  const id = `daily-${hash(`${ownerId}\0${mode}\0${attempt.id}`).slice(0, 40)}`;
+  const id = `daily-${hash(`${ownerId}\0${mode}\0${attempt.itemId}`).slice(0, 40)}`;
   const source = {
     itemId: attempt.itemId,
     title: attempt.title,

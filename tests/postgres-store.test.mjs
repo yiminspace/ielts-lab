@@ -340,6 +340,65 @@ test(
           false,
         );
         assert.equal((await store.listDaily(owner, "demo")).length, 1);
+        const retakes = await Promise.all(
+          [store, second].map(async (connection, i) => {
+            const record = { ...listening, id: randomUUID() };
+            const seed = {
+              ...lesson,
+              id: "daily-" + String(i + 1).repeat(40),
+              attemptId: record.id,
+            };
+            await connection.addAttempt(owner, "demo", record, seed);
+            return connection.ensureDaily(owner, "demo", seed);
+          }),
+        );
+        for (const reused of retakes) assert.deepEqual(reused, lesson);
+        assert.equal((await store.listDaily(owner, "demo")).length, 1);
+        const freshSeeds = [0, 1].map((i) => ({
+          ...lesson,
+          id: "daily-" + String(i + 3).repeat(40),
+          attemptId: randomUUID(),
+          source: { ...lesson.source, itemId: "concurrent-new-material" },
+        }));
+        const firstCreations = await Promise.all(
+          [store, second].map((connection, i) =>
+            connection.ensureDaily(owner, "demo", freshSeeds[i]),
+          ),
+        );
+        assert.deepEqual(firstCreations[0], firstCreations[1]);
+        const duplicate = {
+          ...lesson,
+          id: "daily-" + "e".repeat(40),
+          attemptId: randomUUID(),
+          createdAt: "2099-01-01T00:00:00.000Z",
+        };
+        await store.transaction(owner, "demo", (client) =>
+          client.query(
+            "INSERT INTO daily_lessons(user_id,mode,id,attempt_id,version,data,created_at) VALUES($1,$2,$3,$4,1,$5::jsonb,$6)",
+            [
+              owner,
+              "demo",
+              duplicate.id,
+              duplicate.attemptId,
+              JSON.stringify(duplicate),
+              duplicate.createdAt,
+            ],
+          ),
+        );
+        assert.equal(
+          (await store.listDaily(owner, "demo")).filter(
+            (course) => course.source.itemId === listening.itemId,
+          ).length,
+          1,
+        );
+        assert.deepEqual(
+          await store.ensureDaily(owner, "demo", duplicate),
+          lesson,
+        );
+        assert.deepEqual(
+          await store.getDaily(owner, "demo", duplicate.id),
+          duplicate,
+        );
         assert.equal(await store.getDaily(other, "demo", lesson.id), null);
         assert.equal(await store.getDaily(owner, "archive", lesson.id), null);
         assert.equal(
@@ -374,6 +433,7 @@ test(
           store.addAttempt(owner, "demo", failedAttempt, {
             ...lesson,
             id: "invalid-id",
+            source: { ...lesson.source, itemId: "another-listening" },
             attemptId: failedAttempt.id,
           }),
         );

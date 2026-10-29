@@ -214,6 +214,19 @@ test.describe("Daily real API with an original injected runtime", () => {
       timeout: 15000,
     });
     expect(page.url()).toContain("#/item/demo-listening");
+    const originalCourse = await page
+      .getByRole("link", { name: "打开听后练习" })
+      .getAttribute("href");
+    await page.getByRole("button", { name: "重新作答", exact: true }).click();
+    await page.getByRole("button", { name: "开始练习", exact: true }).click();
+    await submitListening(page);
+    await expect(
+      page.getByRole("link", { name: "打开听后练习" }),
+    ).toHaveAttribute("href", originalCourse!);
+    const courses = await page.evaluate(
+      async () => (await (await fetch("/api/daily")).json()).lessons,
+    );
+    expect(courses).toHaveLength(1);
     await page.getByRole("link", { name: "打开听后练习" }).click();
     await expect(
       page.getByRole("heading", { name: "在新的俱乐部认识朋友" }),
