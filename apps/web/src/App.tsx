@@ -48,6 +48,10 @@ import PaperWorkspace from "./components/PaperWorkspace";
 import DailyWorkspace from "./components/DailyWorkspace";
 import { totalPracticeSeconds } from "./lib/paper-session.mjs";
 import { matchesTestTrack } from "./lib/test-track.mjs";
+import {
+  practiceSummaries,
+  latestPracticeResult,
+} from "./lib/practice-summary.mjs";
 
 type TrackChoice = "general" | "academic" | "all";
 const trackNames = {
@@ -923,7 +927,10 @@ function Catalog({
       ),
     [base],
   );
-  const completed = new Set(progress.attempts.map((a) => a.itemId));
+  const summaries = useMemo(
+    () => practiceSummaries(progress.attempts),
+    [progress.attempts],
+  );
   const filtered = base.filter(
     (i) =>
       (collection === "全部" || i.collection === collection) &&
@@ -932,7 +939,7 @@ function Catalog({
           .toLowerCase()
           .includes(search.toLowerCase())) &&
       (filter === "all" ||
-        (filter === "done" ? completed.has(i.id) : !completed.has(i.id))),
+        (filter === "done" ? summaries.has(i.id) : !summaries.has(i.id))),
   );
   return (
     <>
@@ -1027,6 +1034,7 @@ function Catalog({
         <div className="material-list">
           {filtered.slice(0, visible).map((i) => {
             const Icon = kinds.find((k) => k.id === i.kind)?.icon || BookOpen;
+            const summary = summaries.get(i.id);
             return (
               <div className="material-row" key={i.id}>
                 <span className={"material-icon " + i.kind}>
@@ -1040,13 +1048,18 @@ function Catalog({
                   <span>
                     {i.collection}
                     {i.count ? " · " + i.count + " 项" : ""}
-                    {completed.has(i.id) && (
+                    {summary && (
                       <span className="completed-label">
                         <CheckCircle2 size={13} />
-                        已练习
+                        已练习 {summary.count} 次
                       </span>
                     )}
                   </span>
+                  {summary && (
+                    <span className="practice-result">
+                      {latestPracticeResult(summary.latest)}
+                    </span>
+                  )}
                   <MaterialLabels item={i} />
                 </button>
                 <button
