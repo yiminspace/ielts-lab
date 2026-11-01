@@ -20,6 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     environment: runtime-build
+    env:
+      DOCKER_BUILD_RECORD_UPLOAD: "false"
     permissions:
       contents: read
       packages: write
