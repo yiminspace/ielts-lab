@@ -482,13 +482,16 @@ async def test_parallel_stage_drains_siblings_when_one_branch_fails():
     assert cancelled.is_set()
 
 
-@pytest.mark.parametrize("field,value", [
-    ("prompt", "图书馆几点开门？"),
-    ("prompt", "When does 图书馆 open?"),
-    ("prompt", "When does the 𠮷 library open?"),
-    ("options", ["At nine", "下午六点", "At ten"]),
-    ("answer", "上午九点"),
-])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("prompt", "图书馆几点开门？"),
+        ("prompt", "When does 图书馆 open?"),
+        ("prompt", "When does the 𠮷 library open?"),
+        ("options", ["At nine", "下午六点", "At ten"]),
+        ("answer", "上午九点"),
+    ],
+)
 def test_reading_rejects_chinese_question_fields(field, value):
     question = reading().questions[0].model_dump()
     question[field] = value
@@ -525,7 +528,9 @@ async def test_gateway_retries_chinese_questions_before_returning_reading():
         return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, draft)])
 
     result = await PydanticGateway(FunctionModel(respond)).generate(
-        ReadingDraft, "Generate an English reading exercise.", {},
+        ReadingDraft,
+        "Generate an English reading exercise.",
+        {},
     )
     assert len(calls) == 2
     assert result.questions[0].prompt == "When does the library open?"

@@ -90,22 +90,37 @@ cannot be assumed to mask passwords found inside encrypted files.
 
 ## Release flow
 
-`Release IELTS` builds only from `main`; its verification job runs tests, production builds
-and image isolation checks. Private runtime source is built inside the private
-`yiminspace/agent-runtime` repository using its own `GITHUB_TOKEN`. Its
-`consumer-image.yml` workflow accepts a full IELTS commit SHA already reachable
-from public `main`, validates the runtime pin and lock, runs offline Python tests,
-and publishes `ghcr.io/yiminspace/ielts-learning:sha-<consumer commit>`.
-The only uploaded artifact is `learning-image.json`, containing fixed revisions
-and an immutable image digest; it contains no private source or credentials.
+Every push to `main` automatically runs `Release IELTS` through verification,
+three-image building and production deployment. Manual dispatch on `main` is
+available for retries and needs no digest input. Other branches cannot enter the
+private build or production environments. Verification runs tests, production
+builds and image isolation checks before any private checkout.
 
-A trusted maintainer then dispatches `release.yml` on IELTS `main`, passing
-`learning_digest` from that receipt. The build jobs publish same-commit API/Web
-images without production configuration. The protected production job decrypts
+The `learning` job uses the `runtime-build` environment, restricted to `main`.
+Its `RUNTIME_READ_APP_ID` variable and `RUNTIME_READ_APP_PRIVATE_KEY` secret belong
+to a dedicated GitHub App installed only on `yiminspace/agent-runtime`, with
+Contents read-only (and GitHub's mandatory Metadata read-only) permission.
+The job creates a short-lived installation token scoped to that one repository,
+revoked automatically when the job finishes. It does not use a personal GitHub
+token or require organization-wide Deploy Key access. Before checkout,
+`deploy/runtime-pin.py` validates the fixed repository, full runtime commit and
+matching lock. Checkout does not persist credentials. Offline Python tests disable
+real model requests. The job builds `ghcr.io/yiminspace/ielts-learning:sha-<consumer commit>`
+and removes the private checkout without publishing source artifacts or caches.
+The separate API/Web build has neither that key nor the private checkout.
+The existing private `ielts-learning` GHCR package must grant the `ielts-lab`
+repository Actions write access, allowing this job's own `GITHUB_TOKEN` to publish
+the image. This is independent of the runtime App, which only reads source.
+
+The deploy job requires successful API/Web and learning builds and consumes their
+immutable digest outputs directly, so all three images represent the same IELTS
+commit. Only the protected `production` job decrypts
 `api.env.sops`, `migration.env.sops`, `api-learning.env.sops`, and `learning.env.sops`,
 validates isolated Node/learning credentials and fixed service destinations, then
 streams exactly four bounded regular env files to the fixed release command.
-Pushes to `main` verify/build but do not deploy before the private image is ready.
+Production secrets remain in `production`, separate from the runtime App key.
+Both environments must restrict deployments to the `main` branch; do not add PR
+or wildcard branch policies. Failed verification/builds prevent deployment.
 SSH keepalives preserve that connection during bounded registry transfers.
 
 The current trusted command is `ielts-release API_DIGEST WEB_DIGEST LEARNING_DIGEST SHA`.
