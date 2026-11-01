@@ -134,8 +134,10 @@ The server resolves all requested GHCR digests before changing application
 state. It first checks the config-derived cache tag, otherwise pulls the verified
 single linux/amd64 child manifest. The requested CI index digest is retained in
 the release record; provenance entries are not runtime images. If the daemon's network/proxy route fails,
-it uses the preinstalled Skopeo binary in a userspace environment without inherited
-proxy variables. That path verifies the exact OCI index/manifest hashes, selects
+it uses the preinstalled Skopeo binary without inherited SSH proxy variables.
+For blob copies it explicitly reads the administrator-configured Docker HTTPS
+proxy; if that route fails, it retries directly once. Neither route changes proxy
+settings, Docker configuration or services. That path verifies the exact OCI index/manifest hashes, selects
 one linux/amd64 image, copies the pinned image through a private temporary Docker
 archive and loads it. This does not build images or change/restart Docker/Clash.
 The same full import is used when a successful daemon pull produces an incomplete

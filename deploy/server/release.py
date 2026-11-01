@@ -16,6 +16,7 @@ import tarfile
 import tempfile
 import threading
 import time
+from urllib.parse import urlsplit
 
 BASE = Path('/srv/ielts-lab')
 DIGEST = re.compile(r'^sha256:[0-9a-f]{64}$')
@@ -180,16 +181,41 @@ def resolve_source(repository, digest):
     return selected_digest, config_digest
 
 
+def registry_copy_environment():
+    """Use only the daemon's administrator-configured proxy, never SSH input."""
+    result = run(['docker', 'info', '--format', '{{json .HTTPSProxy}}'],
+                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+    proxy = json.loads(result.stdout)
+    if not proxy:
+        return {}
+    if not isinstance(proxy, str):
+        raise ValueError('Invalid registry proxy configuration')
+    parsed = urlsplit(proxy)
+    if parsed.scheme not in ('http', 'https') or not parsed.hostname:
+        raise ValueError('Invalid registry proxy configuration')
+    return {'HTTPS_PROXY': proxy, 'HTTP_PROXY': proxy,
+            'https_proxy': proxy, 'http_proxy': proxy}
+
+
 def import_pinned_image(role, selected_ref, local_tag, stage):
     """Import all content explicitly when the daemon pull/export is incomplete."""
     with tempfile.TemporaryDirectory(prefix=role + '-image-', dir=stage) as temporary:
         directory = Path(temporary)
         os.chmod(directory, 0o700)
         archive = directory / 'image.tar'
-        run(['skopeo', '--override-os', 'linux', '--override-arch', 'amd64', 'copy',
-             '--retry-times', '2', f'docker://{selected_ref}',
-             f'docker-archive:{archive}:{local_tag}'], stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE, timeout=1200)
+        command = ['skopeo', '--override-os', 'linux', '--override-arch', 'amd64', 'copy',
+                   '--retry-times', '2', f'docker://{selected_ref}',
+                   f'docker-archive:{archive}:{local_tag}']
+        proxy = registry_copy_environment()
+        try:
+            run(command, env=proxy, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                timeout=180 if proxy else 1200)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            if not proxy:
+                raise
+            # A stale daemon proxy must not prevent the existing direct path.
+            archive.unlink(missing_ok=True)
+            run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=1200)
         os.chmod(archive, 0o600)
         run(['docker', 'load', '--input', str(archive)], stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, timeout=180)
@@ -430,7 +456,10 @@ def main():
                 configurations += [module.read_env(stage / 'api-learning.env'), module.read_env(stage / 'learning.env')]
             module.validate(*configurations)
             # Validate all image sources before a migration or active config change.
-            artifacts = {role: prepare_image(role, value, sha, stage) for role, value in requested.items()}
+            artifacts = {}
+            for role, value in requested.items():
+                print(f'IELTS release: verifying {role} image', flush=True)
+                artifacts[role] = prepare_image(role, value, sha, stage)
             images = {'IELTS_' + role.upper() + '_IMAGE': artifact['imageId'] for role, artifact in artifacts.items()}
             compose = compose_command(images)
             existing = snapshot_state(stage)
