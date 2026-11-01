@@ -643,6 +643,24 @@ function Reading({
     send,
   );
   const answers = submitted?.answers || draft.value.answers;
+  const navigation = useRef<HTMLElement>(null);
+  const questionHeadings = useRef(new Map<string, HTMLLegendElement>());
+  const [reviewing, setReviewing] = useState<string | null>(null);
+  const incorrectQuestions = reading.questions.filter((question) =>
+    submitted?.results.some(
+      (result) => result.id === question.id && !result.correct,
+    ),
+  );
+  const jumpToQuestion = (id: string) => {
+    const heading = questionHeadings.current.get(id);
+    if (!heading) return;
+    setReviewing(id);
+    const nav = navigation.current;
+    const top = nav ? Number.parseFloat(getComputedStyle(nav).top) || 0 : 0;
+    heading.style.scrollMarginTop = `${(nav?.offsetHeight || 0) + top + 16}px`;
+    heading.focus({ preventScroll: true });
+    heading.scrollIntoView({ block: "start" });
+  };
   return (
     <div className="daily-reading">
       <article className="daily-passage">
@@ -658,6 +676,74 @@ function Reading({
           <h2>读懂之后，再选答案</h2>
           <span>{reading.questions.length} 题</span>
         </div>
+        {submitted && (
+          <nav
+            className="daily-answer-nav"
+            aria-label="答案导航"
+            ref={navigation}
+          >
+            <div className="daily-answer-nav-heading">
+              <strong>答案导航</strong>
+              <span>
+                {incorrectQuestions.length
+                  ? `${incorrectQuestions.length} 道错题（含未作答）`
+                  : "全部答对"}
+              </span>
+              {incorrectQuestions.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const current = incorrectQuestions.findIndex(
+                      (question) => question.id === reviewing,
+                    );
+                    jumpToQuestion(
+                      incorrectQuestions[
+                        (current + 1) % incorrectQuestions.length
+                      ].id,
+                    );
+                  }}
+                >
+                  下一道错题
+                </button>
+              )}
+            </div>
+            <div className="daily-answer-nav-items">
+              {reading.questions.map((question, index) => {
+                const result = submitted.results.find(
+                  (entry) => entry.id === question.id,
+                );
+                const status = result
+                  ? result.correct
+                    ? "答对"
+                    : "答错"
+                  : "暂无结果";
+                return (
+                  <button
+                    type="button"
+                    key={question.id}
+                    className={
+                      result
+                        ? result.correct
+                          ? "daily-correct"
+                          : "daily-incorrect"
+                        : undefined
+                    }
+                    aria-label={`第 ${index + 1} 题，${status}`}
+                    aria-current={
+                      reviewing === question.id ? "location" : undefined
+                    }
+                    onClick={() => jumpToQuestion(question.id)}
+                  >
+                    {index + 1}{" "}
+                    <span aria-hidden="true">
+                      {result ? (result.correct ? "✓" : "×") : "—"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
+        )}
         {reading.questions.map((question, index) => {
           const result = submitted?.results.find(
             (entry) => entry.id === question.id,
@@ -668,7 +754,14 @@ function Reading({
               key={question.id}
               disabled={disabled || !!submitted}
             >
-              <legend>
+              <legend
+                tabIndex={-1}
+                ref={(element) => {
+                  if (element)
+                    questionHeadings.current.set(question.id, element);
+                  else questionHeadings.current.delete(question.id);
+                }}
+              >
                 <span>{index + 1}.</span> {question.prompt}
               </legend>
               {question.kind === "gap" ? (

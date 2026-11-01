@@ -227,6 +227,47 @@
   color: var(--muted);
   white-space: nowrap;
 }
+.daily-answer-nav {
+  position: sticky;
+  top: 8px;
+  z-index: 3;
+  padding: 14px 0;
+  margin-bottom: 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.daily-answer-nav-heading,
+.daily-answer-nav-items {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.daily-answer-nav-heading {
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.daily-answer-nav-heading > span {
+  color: var(--muted);
+  margin-right: auto;
+}
+.daily-answer-nav-heading button {
+  padding: 6px 10px;
+}
+.daily-answer-nav-items button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 6px 10px;
+  font-weight: 600;
+}
+.daily-answer-nav-items button[aria-current="location"] {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+.daily-question legend:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 4px;
+}
 .daily-question {
   margin: 0 0 22px;
   padding: 0 0 20px;
@@ -454,6 +495,11 @@
   justify-content: space-between;
   gap: 12px;
   margin-top: 8px;
+}
+@media (max-width: 720px) {
+  .daily-answer-nav {
+    top: 68px;
+  }
 }
 @media (max-width: 760px) {
   .daily-reading {
