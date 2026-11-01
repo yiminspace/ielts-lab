@@ -108,6 +108,9 @@ matching lock. Checkout does not persist credentials. Offline Python tests disab
 real model requests. The job builds `ghcr.io/yiminspace/ielts-learning:sha-<consumer commit>`
 and removes the private checkout without publishing source artifacts or caches.
 The separate API/Web build has neither that key nor the private checkout.
+The existing private `ielts-learning` GHCR package must grant the `ielts-lab`
+repository Actions write access, allowing this job's own `GITHUB_TOKEN` to publish
+the image. This is independent of the runtime App, which only reads source.
 
 The deploy job requires successful API/Web and learning builds and consumes their
 immutable digest outputs directly, so all three images represent the same IELTS
