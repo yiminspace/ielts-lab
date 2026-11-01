@@ -105,6 +105,8 @@ class ImageAcquisitionTests(unittest.TestCase):
             if not self.pull_succeeds:
                 raise subprocess.CalledProcessError(1, args, stderr=b'synthetic proxy EOF')
             self.loaded = True
+        if args[:2] == ['docker', 'info']:
+            return subprocess.CompletedProcess(args, 0, stdout=b'""')
         if args[:3] == ['skopeo', 'inspect', '--raw']:
             requested = args[-1].rsplit('@', 1)[1]
             return subprocess.CompletedProcess(args, 0, stdout=self.manifests[requested])
@@ -290,9 +292,42 @@ class ImageAcquisitionTests(unittest.TestCase):
         with mock.patch.dict(os.environ, proxies), mock.patch.object(release.subprocess, 'run') as command:
             release.run(['skopeo','inspect','--raw','docker://example'])
         self.assertFalse(set(proxies) & command.call_args.kwargs['env'].keys())
+
         with mock.patch.dict(os.environ, proxies), mock.patch.object(release.subprocess, 'Popen', return_value=export_process(saved_archive())) as command:
             release.verify_saved_image(image(), SHA, API_ID)
         self.assertFalse(set(proxies) & command.call_args.kwargs['env'].keys())
+
+    def test_registry_proxy_comes_only_from_daemon_configuration(self):
+        for configured, expected in [('', {}), ('http://synthetic-proxy.invalid:3128', {
+                'HTTP_PROXY': 'http://synthetic-proxy.invalid:3128',
+                'HTTPS_PROXY': 'http://synthetic-proxy.invalid:3128',
+                'http_proxy': 'http://synthetic-proxy.invalid:3128',
+                'https_proxy': 'http://synthetic-proxy.invalid:3128'})]:
+            with self.subTest(configured=configured), mock.patch.object(release, 'run',
+                    return_value=subprocess.CompletedProcess([], 0, stdout=encoded(configured))):
+                self.assertEqual(release.registry_copy_environment(), expected)
+        for configured in ['file:///etc/passwd', 'socks5://synthetic-proxy.invalid:1080', {'url': 'invalid'}]:
+            with self.subTest(configured=configured), mock.patch.object(release, 'run',
+                    return_value=subprocess.CompletedProcess([], 0, stdout=encoded(configured))):
+                with self.assertRaisesRegex(ValueError, 'proxy configuration'):
+                    release.registry_copy_environment()
+
+    def test_failed_configured_proxy_retries_direct_copy_once(self):
+        original = self.command
+        copies = []
+        def commands(args, **kwargs):
+            if args[0] == 'skopeo' and 'copy' in args:
+                copies.append(kwargs)
+                if len(copies) == 1:
+                    raise subprocess.CalledProcessError(1, args, stderr=b'synthetic proxy failure')
+            return original(args, **kwargs)
+        with self.commands(), mock.patch.object(release, 'registry_copy_environment',
+                return_value={'HTTPS_PROXY': 'http://synthetic-proxy.invalid:3128'}), \
+                mock.patch.object(release, 'run', side_effect=commands):
+            release.prepare_image('api', self.index_digest, SHA, self.stage)
+        self.assertEqual(len(copies), 2)
+        self.assertIn('HTTPS_PROXY', copies[0]['env'])
+        self.assertNotIn('env', copies[1])
 
 
 class ReleaseIntegrationTests(unittest.TestCase):
