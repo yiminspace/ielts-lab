@@ -3,6 +3,10 @@ on:
   push:
   pull_request:
   workflow_call:
+    inputs:
+      frontend_only:
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -35,10 +39,14 @@ jobs:
         run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - run: python3 -m py_compile deploy/server/release.py deploy/server/ssh-entry.py deploy/backup.py
-      - run: bash -n deploy/deploy-ci.sh deploy/restore-check.sh
+      - run: bash -n deploy/deploy-ci.sh deploy/deploy-web-ci.sh deploy/restore-check.sh
       - run: python3 -m unittest discover -s deploy/tests -v
-      - name: Verify image isolation
+      - name: Verify API image isolation
+        if: inputs.frontend_only != true
         run: |
           docker build -f deploy/api.Dockerfile -t ielts-api-check .
+          node deploy/check-image.mjs ielts-api-check
+      - name: Verify Web image isolation
+        run: |
           docker build -f deploy/web.Dockerfile -t ielts-web-check .
-          node deploy/check-image.mjs ielts-api-check ielts-web-check
+          node deploy/check-image.mjs ielts-web-check

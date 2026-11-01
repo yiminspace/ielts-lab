@@ -9,14 +9,34 @@ concurrency:
   group: ielts-production
   cancel-in-progress: false
 jobs:
+  scope:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.scope.outputs.mode }}
+      api_base: ${{ steps.scope.outputs.api_base }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Compare against running component revisions
+        id: scope
+        env:
+          RELEASE_EVENT: ${{ github.event_name }}
+          RELEASE_HEAD: ${{ github.sha }}
+        run: python3 deploy/release-scope.py --event "$RELEASE_EVENT" --head "$RELEASE_HEAD"
   verify:
+    needs: scope
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/check.yml
+    with:
+      frontend_only: ${{ needs.scope.outputs.mode == 'web' }}
     permissions:
       contents: read
   learning:
-    needs: verify
-    if: github.ref == 'refs/heads/main'
+    needs: [scope, verify]
+    if: needs.scope.outputs.mode == 'full'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     environment: runtime-build
@@ -99,14 +119,14 @@ jobs:
         if: always()
         run: rm -rf -- .runtime-source services/learning/.venv "$RUNNER_TEMP/learning-requirements.txt"
   build:
-    needs: verify
+    needs: [scope, verify]
+    if: needs.scope.outputs.mode == 'full'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     outputs:
       api_digest: ${{ steps.api.outputs.digest }}
-      web_digest: ${{ steps.web.outputs.digest }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -129,6 +149,25 @@ jobs:
           platforms: linux/amd64
           cache-from: type=gha,scope=ielts-api
           cache-to: type=gha,scope=ielts-api,mode=max
+  web:
+    needs: [scope, verify]
+    if: needs.scope.outputs.mode == 'full' || needs.scope.outputs.mode == 'web'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.web.outputs.digest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build Web
         id: web
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
@@ -142,15 +181,15 @@ jobs:
           cache-from: type=gha,scope=ielts-web
           cache-to: type=gha,scope=ielts-web,mode=max
   deploy:
-    needs: [build, learning]
-    if: github.ref == 'refs/heads/main'
+    needs: [scope, build, learning, web]
+    if: needs.scope.outputs.mode == 'full'
     runs-on: ubuntu-latest
     environment: production
     permissions:
       contents: read
     env:
       API_DIGEST: ${{ needs.build.outputs.api_digest }}
-      WEB_DIGEST: ${{ needs.build.outputs.web_digest }}
+      WEB_DIGEST: ${{ needs.web.outputs.digest }}
       LEARNING_DIGEST: ${{ needs.learning.outputs.digest }}
       RELEASE_SHA: ${{ github.sha }}
       DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
@@ -176,3 +215,23 @@ jobs:
       - name: Clear deployment material
         if: always()
         run: rm -rf -- "$RUNNER_TEMP/ielts-release" "$RUNNER_TEMP/sops"
+  deploy-web:
+    needs: [scope, web]
+    if: needs.scope.outputs.mode == 'web'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      WEB_DIGEST: ${{ needs.web.outputs.digest }}
+      RELEASE_SHA: ${{ github.sha }}
+      API_BASE_SHA: ${{ needs.scope.outputs.api_base }}
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Replace only Web; send no application configuration
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: bash deploy/deploy-web-ci.sh

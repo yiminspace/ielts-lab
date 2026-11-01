@@ -90,11 +90,31 @@ cannot be assumed to mask passwords found inside encrypted files.
 
 ## Release flow
 
-Every push to `main` automatically runs `Release IELTS` through verification,
-three-image building and production deployment. Manual dispatch on `main` is
-available for retries and needs no digest input. Other branches cannot enter the
-private build or production environments. Verification runs tests, production
-builds and image isolation checks before any private checkout.
+Every push to `main` automatically runs `Release IELTS`. Before building, it
+compares the current commit with the actual API `/health` and Web `/web-health`
+revisions. UI changes (including their tests/coverage notes) build and deploy only
+Web. Shared API helpers in `apps/web/src/lib/questions.mjs` and `test-track.mjs`,
+dependency locks, API/learning code and release configuration require a full release.
+Pure documentation/test changes already reflected in running application code do
+not deploy. Comparing against live versions ensures a failed/skipped backend
+release is not hidden by a later frontend-only push. Unknown/non-ancestor health
+revisions conservatively select a full release.
+
+Manual dispatch on `main` always performs a full release for recovery and needs
+no digest input. Other branches cannot enter the private build or production
+environments. Verification runs tests, production builds and image isolation
+checks before any private checkout. The Web-only verification skips the API image
+build; regular PR checks continue checking both images.
+
+For a Web-only release the private runtime build and GitHub App are skipped. The
+production job uses only its SSH key, not SOPS or application credentials, and sends
+`ielts-web-release WEB_DIGEST WEB_SHA EXPECTED_API_SHA` with no configuration payload.
+The fixed server entry validates existing image identities and the backend baseline,
+then runs Compose with `--no-deps` targeting only `ielts-web`. It performs no
+migrations and does not replace API/learning configuration or restart those services.
+Failed Web startup restores only Web and its image pointers. `release.json.version`
+retains the backend/full-release revision; `webVersion` records an independent Web
+revision. Full-release rollback understands this mixed-version state.
 
 The `learning` job uses the `runtime-build` environment, restricted to `main`.
 Its `RUNTIME_READ_APP_ID` variable and `RUNTIME_READ_APP_PRIVATE_KEY` secret belong
@@ -112,7 +132,7 @@ The existing private `ielts-learning` GHCR package must grant the `ielts-lab`
 repository Actions write access, allowing this job's own `GITHUB_TOKEN` to publish
 the image. This is independent of the runtime App, which only reads source.
 
-The deploy job requires successful API/Web and learning builds and consumes their
+The full deploy job requires successful API/Web and learning builds and consumes their
 immutable digest outputs directly, so all three images represent the same IELTS
 commit. Only the protected `production` job decrypts
 `api.env.sops`, `migration.env.sops`, `api-learning.env.sops`, and `learning.env.sops`,
