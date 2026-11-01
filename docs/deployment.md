@@ -138,6 +138,10 @@ it uses the preinstalled Skopeo binary in a userspace environment without inheri
 proxy variables. That path verifies the exact OCI index/manifest hashes, selects
 one linux/amd64 image, copies the pinned image through a private temporary Docker
 archive and loads it. This does not build images or change/restart Docker/Clash.
+The same full import is used when a successful daemon pull produces an incomplete
+`docker image save` archive. The imported image must pass the original raw config,
+rootfs and revision checks before it can be tagged or used; a successful pull alone
+is never treated as validation. Invalid cached images remain rejected.
 
 All acquisition paths, including an administrator-preloaded image, verify the
 remote digest chain and the image's raw config. The server streams `docker image

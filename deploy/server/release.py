@@ -180,6 +180,22 @@ def resolve_source(repository, digest):
     return selected_digest, config_digest
 
 
+def import_pinned_image(role, selected_ref, local_tag, stage):
+    """Import all content explicitly when the daemon pull/export is incomplete."""
+    with tempfile.TemporaryDirectory(prefix=role + '-image-', dir=stage) as temporary:
+        directory = Path(temporary)
+        os.chmod(directory, 0o700)
+        archive = directory / 'image.tar'
+        run(['skopeo', '--override-os', 'linux', '--override-arch', 'amd64', 'copy',
+             '--retry-times', '2', f'docker://{selected_ref}',
+             f'docker-archive:{archive}:{local_tag}'], stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, timeout=1200)
+        os.chmod(archive, 0o600)
+        run(['docker', 'load', '--input', str(archive)], stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, timeout=180)
+    return inspect_image(local_tag)
+
+
 def prepare_image(role, requested_digest, sha, stage):
     if role not in REPOSITORIES or not DIGEST.fullmatch(requested_digest):
         raise ValueError('Image source is not allowed')
@@ -192,30 +208,27 @@ def prepare_image(role, requested_digest, sha, stage):
         cached = inspect_image(local_tag)
     except subprocess.CalledProcessError:
         cached = None
+    image_id = None
     if cached is None:
         try:
             run(['docker', 'pull', '--platform', 'linux/amd64', selected_ref],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=90)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-            # Userspace copy bypasses a broken daemon proxy without changing it.
-            with tempfile.TemporaryDirectory(prefix=role + '-image-', dir=stage) as temporary:
-                directory = Path(temporary)
-                os.chmod(directory, 0o700)
-                archive = directory / 'image.tar'
-                run(['skopeo', '--override-os', 'linux', '--override-arch', 'amd64', 'copy',
-                     '--retry-times', '2', f'docker://{repository}@{selected_digest}',
-                     f'docker-archive:{archive}:{local_tag}'], stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE, timeout=1200)
-                os.chmod(archive, 0o600)
-                run(['docker', 'load', '--input', str(archive)], stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE, timeout=180)
-            cached = inspect_image(local_tag)
+            cached = import_pinned_image(role, selected_ref, local_tag, stage)
         else:
             cached = inspect_image(selected_ref)
             validate_image(cached, sha, requested_ref=selected_ref)
+            # Some containerd stores report pull success yet export only a manifest,
+            # omitting config/layers. Import the same verified digest in full and
+            # repeat all validation; never accept the incomplete export as proof.
+            try:
+                image_id = verify_saved_image(cached, sha, expected_config)
+            except ValueError:
+                cached = import_pinned_image(role, selected_ref, local_tag, stage)
+    if image_id is None:
+        image_id = verify_saved_image(cached, sha, expected_config)
     # Cached/preloaded and freshly loaded images need the same remote digest
     # chain, raw config, rootfs and release metadata, regardless of engine layout.
-    image_id = verify_saved_image(cached, sha, expected_config)
     # Shared platform deploys prune dangling images. Keep a fixed local tag so a
     # just-replaced release remains available for rollback; execution still uses ID.
     run(['docker', 'tag', image_id, local_tag], stdout=subprocess.PIPE,

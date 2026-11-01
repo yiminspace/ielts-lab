@@ -256,6 +256,32 @@ class ImageAcquisitionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'requested registry digest'):
                 release.prepare_image('api', self.index_digest, SHA, self.stage)
 
+    def test_successful_pull_with_missing_exported_config_imports_full_pinned_content(self):
+        selected = release.REPOSITORIES['api'] + '@' + self.leaf_digest
+        self.pull_succeeds = True
+        self.observed = image(MANIFEST_ID, requested=selected)
+        incomplete = io.BytesIO()
+        with tarfile.open(fileobj=incomplete, mode='w:') as archive:
+            raw = encoded([{'Config': 'missing/config.json', 'Layers': []}])
+            member = tarfile.TarInfo('manifest.json'); member.size = len(raw)
+            archive.addfile(member, io.BytesIO(raw))
+        exports = [export_process(incomplete.getvalue()), export_process(saved_archive())]
+        with self.commands(), mock.patch.object(release.subprocess, 'Popen', side_effect=exports):
+            result = release.prepare_image('api', self.index_digest, SHA, self.stage)
+        self.assertEqual(result['imageId'], MANIFEST_ID)
+        self.assertTrue(any(args[0] == 'skopeo' and 'copy' in args for args, _ in self.calls))
+        self.assertEqual(list(self.stage.iterdir()), [])
+
+    def test_reimport_after_successful_pull_still_rejects_wrong_config(self):
+        selected = release.REPOSITORIES['api'] + '@' + self.leaf_digest
+        self.pull_succeeds = True
+        self.observed = image(MANIFEST_ID, requested=selected)
+        self.saved_config = WEB_CONFIG
+        with self.commands():
+            with self.assertRaisesRegex(ValueError, 'config digest'):
+                release.prepare_image('api', self.index_digest, SHA, self.stage)
+        self.assertTrue(any(args[0] == 'skopeo' and 'copy' in args for args, _ in self.calls))
+
     def test_source_is_fixed_and_proxy_environment_is_not_inherited(self):
         with mock.patch.object(release, 'run') as call:
             with self.assertRaises(ValueError): release.prepare_image('other-repository', API_DIGEST, SHA, self.stage)
