@@ -14,6 +14,7 @@ from ielts_learning.models import (
     ExpressionPlan,
     Lesson,
     LessonInput,
+    Question,
     ReadingDraft,
     Repairs,
     TurnInput,
@@ -479,3 +480,53 @@ async def test_parallel_stage_drains_siblings_when_one_branch_fails():
     with pytest.raises(ValueError, match="Original fixture failure"):
         await parallel(slow(), fail())
     assert cancelled.is_set()
+
+
+@pytest.mark.parametrize("field,value", [
+    ("prompt", "图书馆几点开门？"),
+    ("prompt", "When does 图书馆 open?"),
+    ("prompt", "When does the 𠮷 library open?"),
+    ("options", ["At nine", "下午六点", "At ten"]),
+    ("answer", "上午九点"),
+])
+def test_reading_rejects_chinese_question_fields(field, value):
+    question = reading().questions[0].model_dump()
+    question[field] = value
+    with pytest.raises(ValidationError, match="must be in English"):
+        Question.model_validate(question)
+
+
+def test_reading_allows_english_times_and_chinese_help():
+    question = reading().questions[0].model_dump()
+    question.update(options=["10:30 a.m.", "2 p.m.", "5 p.m."], answer="2 p.m.")
+    parsed = Question.model_validate(question)
+    assert parsed.answer == "2 p.m."
+    assert parsed.explanation == "原文说明九点开门。"
+
+
+def test_reading_retries_when_chinese_leaves_fewer_than_five_questions():
+    draft = reading().model_dump()
+    draft["questions"][0]["prompt"] = "图书馆几点开门？"
+    with pytest.raises(ValidationError, match="must be in English"):
+        ReadingDraft.model_validate(draft)
+
+
+async def test_gateway_retries_chinese_questions_before_returning_reading():
+    from pydantic_ai.messages import ModelResponse, ToolCallPart
+    from pydantic_ai.models.function import FunctionModel
+
+    calls = []
+
+    def respond(messages, info):
+        draft = reading().model_dump()
+        calls.append(messages)
+        if len(calls) == 1:
+            draft["questions"][0]["prompt"] = "图书馆几点开门？"
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, draft)])
+
+    result = await PydanticGateway(FunctionModel(respond)).generate(
+        ReadingDraft, "Generate an English reading exercise.", {},
+    )
+    assert len(calls) == 2
+    assert result.questions[0].prompt == "When does the library open?"
+    assert result.translation.startswith("河畔图书馆")

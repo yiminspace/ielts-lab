@@ -1128,3 +1128,26 @@ test("teacher audio committed before a crash is reused without another synthesis
     lesson.conversation.messages[0].audioUrl.endsWith(`${saved.id}/audio`),
   );
 });
+
+for (const field of ["prompt", "options", "answer"]) {
+  test(`daily rejects Chinese reading ${field} from the runtime`, async (t) => {
+    const runtime = fakeRuntime({
+      output(value) {
+        if (!value.reading) return;
+        const q = value.reading.questions[0];
+        if (field === "prompt") q.prompt = "俱乐部哪一天见面？";
+        if (field === "options") q.options[1] = "星期二";
+        if (field === "answer") q.answer = q.options[0] = "星期一";
+      },
+    });
+    const { service } = await fixture(t, runtime);
+    const seed = await service.ensure(owner, attempt());
+    const failed = await completed(
+      service,
+      seed.id,
+      (v) => v.status === "failed",
+    );
+    assert.equal(failed.content, null);
+    assert.match(failed.error, /必须使用英文/);
+  });
+}
