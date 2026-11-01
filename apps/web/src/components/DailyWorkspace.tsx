@@ -656,6 +656,7 @@ function Reading({
     if (!heading) return;
     setReviewing(id);
     const nav = navigation.current;
+    // Reserve the measured height: wrapping makes the mobile navigation taller.
     const top = nav ? Number.parseFloat(getComputedStyle(nav).top) || 0 : 0;
     heading.style.scrollMarginTop = `${(nav?.offsetHeight || 0) + top + 16}px`;
     heading.focus({ preventScroll: true });
