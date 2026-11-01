@@ -3,11 +3,6 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      learning_digest:
-        description: Immutable learning image digest produced by the private runtime build for this main commit
-        required: true
-        type: string
 permissions:
   contents: read
 concurrency:
@@ -19,6 +14,88 @@ jobs:
     uses: ./.github/workflows/check.yml
     permissions:
       contents: read
+  learning:
+    needs: verify
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: runtime-build
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.image.outputs.digest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Validate the fixed runtime pin and lock
+        id: runtime
+        run: |
+          set -euo pipefail
+          ref="$(python3 deploy/runtime-pin.py)"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+      - name: Create a short-lived token limited to runtime source reads
+        id: runtime-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.RUNTIME_READ_APP_ID }}
+          private-key: ${{ secrets.RUNTIME_READ_APP_PRIVATE_KEY }}
+          owner: yiminspace
+          repositories: agent-runtime
+          permission-contents: read
+      - name: Check out the pinned private runtime
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: yiminspace/agent-runtime
+          ref: ${{ steps.runtime.outputs.ref }}
+          path: .runtime-source
+          token: ${{ steps.runtime-token.outputs.token }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff
+        with:
+          version: "0.10.12"
+          python-version: "3.12"
+          enable-cache: false
+      - name: Install locked learning dependencies
+        run: |
+          set -euo pipefail
+          uv venv services/learning/.venv
+          uv export --project services/learning --frozen --no-emit-project --no-emit-package agent-runtime --format requirements-txt --no-hashes > "$RUNNER_TEMP/learning-requirements.txt"
+          uv pip install --python services/learning/.venv/bin/python -r "$RUNNER_TEMP/learning-requirements.txt"
+          uv pip install --python services/learning/.venv/bin/python --no-deps -e .runtime-source -e services/learning
+      - name: Test learning with real model requests disabled
+        run: |
+          services/learning/.venv/bin/python - <<'PY'
+          import pydantic_ai.models
+          import pytest
+          pydantic_ai.models.ALLOW_MODEL_REQUESTS = False
+          raise SystemExit(pytest.main(['services/learning/tests', '-q']))
+          PY
+      - name: Check learning lint and formatting
+        run: |
+          services/learning/.venv/bin/ruff check services/learning/src services/learning/tests
+          services/learning/.venv/bin/ruff format --check services/learning/src services/learning/tests
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish the same-commit learning image
+        id: image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: deploy/learning.Dockerfile
+          build-contexts: agent-runtime=${{ github.workspace }}/.runtime-source
+          build-args: GIT_SHA=${{ github.sha }}
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/yiminspace/ielts-learning:sha-${{ github.sha }}
+      - name: Remove private checkout and temporary requirements
+        if: always()
+        run: rm -rf -- .runtime-source services/learning/.venv "$RUNNER_TEMP/learning-requirements.txt"
   build:
     needs: verify
     runs-on: ubuntu-latest
@@ -63,10 +140,8 @@ jobs:
           cache-from: type=gha,scope=ielts-web
           cache-to: type=gha,scope=ielts-web,mode=max
   deploy:
-    needs: build
-    # The private runtime workflow builds its source with its own read-only token.
-    # A trusted maintainer passes its immutable image digest to this protected job.
-    if: github.event_name == 'workflow_dispatch'
+    needs: [build, learning]
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production
     permissions:
@@ -74,7 +149,7 @@ jobs:
     env:
       API_DIGEST: ${{ needs.build.outputs.api_digest }}
       WEB_DIGEST: ${{ needs.build.outputs.web_digest }}
-      LEARNING_DIGEST: ${{ inputs.learning_digest }}
+      LEARNING_DIGEST: ${{ needs.learning.outputs.digest }}
       RELEASE_SHA: ${{ github.sha }}
       DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
       DEPLOY_USER: ${{ vars.DEPLOY_USER }}
