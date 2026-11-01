@@ -35,6 +35,11 @@ class Question(Model):
 
     @model_validator(mode="after")
     def valid_answer(self):
+        if not all(english(value) for value in [self.prompt, self.answer, *self.options]):
+            raise ValueError(
+                "Reading prompts, options and answers must be in English; "
+                "Chinese belongs only in translation and explanation"
+            )
         # These labels are fixed UI choices; only the answer needs model judgment.
         if self.kind == "true_false" and not self.options:
             self.options = ["True", "False", "Not Given"]
@@ -118,7 +123,11 @@ class TurnInput(LessonInput):
 
 
 def english(value: str) -> bool:
-    return not re.search(r"[\u3400-\u9fff]", value)
+    return not re.search(
+        r"[\u2e80-\u2fdf\u3005\u3007\u3021-\u3029\u3038-\u303b"
+        r"\u3400-\u9fff\uf900-\ufaff\U00020000-\U000323af]",
+        value,
+    )
 
 
 class ConversationReply(Model):

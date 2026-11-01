@@ -28,7 +28,7 @@ from .models import (
 from .profiles import profile
 
 WORKFLOW_VERSION = "1"
-PROMPT_VERSION = "2026-10-28.1"
+PROMPT_VERSION = "2026-11-01.1"
 
 
 async def parallel(*coroutines):
@@ -45,6 +45,8 @@ async def parallel(*coroutines):
 
 READING = """Generate a complete reading exercise from the supplied transcript. Preserve the
 whole source as the passage (the program inserts it); provide a faithful complete Chinese translation.
+Write every question prompt, option and answer in English only, including times and units.
+Chinese is allowed only in translation and answer explanations, never in question text.
 Use the requested question count and at least two of choice, true_false, gap. IDs must be stable
 distinct strings. For each question, evidence must be an exact contiguous quotation from the
 transcript, at most four adjacent sentences. Explain the answer in Chinese using that evidence.

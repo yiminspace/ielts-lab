@@ -472,6 +472,13 @@ function validateContent(value, source) {
     throw failure(502, "阅读需要至少 5 道有效题目且题号不重复");
   for (const q of questions) {
     if (
+      object(q) &&
+      [q.prompt, q.answer, ...(Array.isArray(q.options) ? q.options : [])].some(
+        (text) => typeof text === "string" && /[\p{Script=Han}]/u.test(text),
+      )
+    )
+      throw failure(502, "阅读题干、选项和答案必须使用英文，请重试生成");
+    if (
       !object(q) ||
       !safeText(q.id, 100) ||
       !q.id ||
