@@ -328,6 +328,17 @@ test.describe("Daily real API with an original injected runtime", () => {
     await expect(page.locator(".daily-reading-result blockquote")).toHaveCount(
       5,
     );
+    const answerNav = page.getByRole("navigation", { name: "答案导航" });
+    await expect(
+      answerNav.getByText("全部答对", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      answerNav.getByRole("button", { name: "下一道错题" }),
+    ).toHaveCount(0);
+    await answerNav
+      .getByRole("button", { name: "第 5 题，答对", exact: true })
+      .click();
+    await expect(page.locator(".daily-question legend").nth(4)).toBeFocused();
 
     await page.getByRole("tab", { name: "主题交流" }).click();
     const conversation = page.getByRole("textbox", { name: "接着聊一聊" });
@@ -576,6 +587,9 @@ test.describe("Daily reading allows unanswered questions", () => {
           exact: true,
         });
         await expect(submit).toBeEnabled();
+        await expect(
+          page.getByRole("navigation", { name: "答案导航" }),
+        ).toHaveCount(0);
         if (partial) {
           await page
             .getByRole("radio", { name: "Monday", exact: true })
@@ -607,6 +621,70 @@ test.describe("Daily reading allows unanswered questions", () => {
           ),
         ).toBeVisible();
         await expect(submit).toHaveCount(0);
+        const answerNav = page.getByRole("navigation", { name: "答案导航" });
+        await expect(
+          answerNav.getByText(`${partial ? 4 : 5} 道错题（含未作答）`, {
+            exact: true,
+          }),
+        ).toBeVisible();
+        await expect(
+          answerNav.getByRole("button", { name: /答错/ }),
+        ).toHaveCount(partial ? 4 : 5);
+        await answerNav.getByRole("button", { name: "下一道错题" }).click();
+        const firstWrong = partial ? 1 : 0;
+        await expect(
+          page.locator(".daily-question legend").nth(firstWrong),
+        ).toBeFocused();
+        await answerNav
+          .getByRole("button", { name: "第 5 题，答错", exact: true })
+          .click();
+        await expect(
+          page.locator(".daily-question legend").nth(4),
+        ).toBeFocused();
+        const navBox = (await answerNav.boundingBox())!;
+        const questionBox = (await page
+          .locator(".daily-question legend")
+          .nth(4)
+          .boundingBox())!;
+        expect(questionBox.y).toBeGreaterThanOrEqual(navBox.y + navBox.height);
+        await answerNav.getByRole("button", { name: "下一道错题" }).click();
+        await expect(
+          page.locator(".daily-question legend").nth(firstWrong),
+        ).toBeFocused();
+        await page.setViewportSize({ width: 390, height: 844 });
+        await expect
+          .poll(async () => {
+            const box = (await page.locator(".sidebar").boundingBox())!;
+            return box.x + box.width;
+          })
+          .toBeLessThanOrEqual(0);
+        await answerNav
+          .getByRole("button", { name: "第 5 题，答错", exact: true })
+          .click();
+        await expect(
+          page.locator(".daily-question legend").nth(4),
+        ).toBeFocused();
+        const mobileNavBox = (await answerNav.boundingBox())!;
+        const topbarBox = (await page.locator(".topbar").boundingBox())!;
+        expect(mobileNavBox.y).toBeGreaterThanOrEqual(
+          topbarBox.y + topbarBox.height,
+        );
+        const mobileQuestionBox = (await page
+          .locator(".daily-question legend")
+          .nth(4)
+          .boundingBox())!;
+        expect(mobileQuestionBox.y).toBeGreaterThanOrEqual(
+          mobileNavBox.y + mobileNavBox.height,
+        );
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= innerWidth,
+          ),
+        ).toBe(true);
+        await page.screenshot({
+          path: `/tmp/ielts-answer-nav-${partial ? "partial" : "blank"}.png`,
+          fullPage: false,
+        });
       },
     );
   }
