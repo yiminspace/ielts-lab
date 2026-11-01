@@ -271,6 +271,9 @@ def rollback_images(previous):
     if 'learningImageId' in previous and 'learning' not in previous:
         raise ValueError('Previous learning release source is missing')
     for role in roles:
+        role_sha = previous.get(role + 'Version', sha)
+        if not isinstance(role_sha, str) or not re.fullmatch(r'[0-9a-f]{40}', role_sha):
+            raise ValueError('Previous component version is invalid')
         repository = REPOSITORIES[role]
         requested = previous.get(role)
         prefix = repository + '@'
@@ -282,11 +285,11 @@ def rollback_images(previous):
             if not isinstance(image_id, str) or not DIGEST.fullmatch(image_id):
                 raise ValueError('Previous release image identity is invalid')
             images['IELTS_' + role.upper() + '_IMAGE'] = validate_image(
-                inspect_image(image_id), sha, expected_id=image_id)
+                inspect_image(image_id), role_sha, expected_id=image_id)
         else:
             # Existing pre-fallback manifests retain only a pinned registry ref.
             images['IELTS_' + role.upper() + '_IMAGE'] = validate_image(
-                inspect_image(requested), sha, requested_ref=requested)
+                inspect_image(requested), role_sha, requested_ref=requested)
     return images
 
 
@@ -330,11 +333,11 @@ def receive_configurations(payload, stage, with_learning):
             write_private(stage / item.name, raw)
 
 
-def snapshot_state(stage):
+def snapshot_state(stage, names=STATE_FILES):
     backup = stage / 'previous'
     backup.mkdir(mode=0o700)
     existing = set()
-    for name in STATE_FILES:
+    for name in names:
         current = BASE / name
         if current.is_symlink() or (current.exists() and not current.is_file()):
             raise ValueError('Deployment state must consist of regular files')
@@ -347,8 +350,8 @@ def snapshot_state(stage):
     return existing
 
 
-def restore_state(stage, existing):
-    for name in STATE_FILES:
+def restore_state(stage, existing, names=STATE_FILES):
+    for name in names:
         destination = BASE / name
         if name in existing:
             os.replace(stage / 'previous' / name, destination)
@@ -393,11 +396,15 @@ def stop_learning():
             raise
 
 
+def verify_node_health(container, port, sha):
+    script = f"fetch('http://127.0.0.1:{port}/health').then(async r=>{{const b=await r.json();if(!r.ok||b.version!==process.argv[1])process.exit(1)}}).catch(()=>process.exit(1))"
+    run(['docker', 'exec', container, 'node', '-e', script, sha],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+
+
 def verify_health(sha, with_learning):
     for container, port in [('ielts-api', 4318), ('ielts-web', 4317)]:
-        script = f"fetch('http://127.0.0.1:{port}/health').then(async r=>{{const b=await r.json();if(!r.ok||b.version!==process.argv[1])process.exit(1)}}).catch(()=>process.exit(1))"
-        run(['docker', 'exec', container, 'node', '-e', script, sha],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+        verify_node_health(container, port, sha)
     if with_learning:
         script = """import json, os, sys, urllib.request, urllib.error
 base = 'http://127.0.0.1:4320'
@@ -422,10 +429,54 @@ else:
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=40)
 
 
+def persist_image_state(stage, images, manifest):
+    content = ''.join(f'{key}={value}\n' for key, value in images.items()).encode()
+    write_private(stage / 'images.env', content)
+    os.replace(stage / 'images.env', BASE / '.env')
+    write_private(stage / 'release.json', (json.dumps(manifest) + '\n').encode())
+    os.replace(stage / 'release.json', BASE / 'release.json')
+
+
+def release_web(digest, sha, api_base, stage):
+    names = ('.env', 'release.json')
+    existing = snapshot_state(stage, names)
+    if set(names) != existing:
+        raise ValueError('A full release is required before a Web-only release')
+    previous = json.loads((stage / 'previous' / 'release.json').read_text())
+    if previous.get('version') != api_base:
+        raise ValueError('Backend changed since release classification; require a fresh release')
+    restored = rollback_images(previous)
+    artifact = prepare_image('web', digest, sha, stage)
+    images = {**restored, 'IELTS_WEB_IMAGE': artifact['imageId']}
+    compose = compose_command(images)
+    options = ['up', '-d', '--no-deps', '--force-recreate', '--no-build', '--pull', 'never',
+               '--wait', '--wait-timeout', '120', 'ielts-web']
+    try:
+        run([*compose, *options], env=images)
+        verify_node_health('ielts-web', 4317, sha)
+        manifest = {**previous, 'web': artifact['requested'], 'webImageId': artifact['imageId'],
+                    'webVersion': sha, 'webDeployedAt': int(time.time())}
+        persist_image_state(stage, images, manifest)
+    except Exception:
+        restore_state(stage, existing, names)
+        run([*compose, *options], env=restored)
+        verify_node_health('ielts-web', 4317, previous.get('webVersion', previous['version']))
+        raise
+    print(f'IELTS Web-only release verified: {sha}', flush=True)
+
+
 def main():
     if os.geteuid() != 0:
         raise ValueError('Invalid release invocation')
-    requested, sha = parse_invocation(sys.argv[1:])
+    arguments = sys.argv[1:]
+    web_only = arguments[:1] == ['--web-only']
+    if web_only:
+        if (len(arguments) != 4 or not DIGEST.fullmatch(arguments[1]) or
+                not all(re.fullmatch(r'[0-9a-f]{40}', value) for value in arguments[2:])):
+            raise ValueError('Invalid Web-only release invocation')
+        requested, sha = {'web': arguments[1]}, arguments[2]
+    else:
+        requested, sha = parse_invocation(arguments)
     with_learning = 'learning' in requested
     compose_file = BASE / 'compose.yml'
     if (not BASE.is_dir() or BASE.is_symlink() or
@@ -434,6 +485,10 @@ def main():
     with open(BASE / '.maintenance.lock', 'a') as maintenance:
         os.chmod(BASE / '.maintenance.lock', 0o600)
         fcntl.flock(maintenance, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if web_only:
+            with tempfile.TemporaryDirectory(prefix='ielts-web-release-', dir=BASE) as temporary:
+                release_web(requested['web'], sha, arguments[3], Path(temporary))
+            return
         def receive_timeout(signum, frame):
             raise TimeoutError('Release payload timed out')
         signal.signal(signal.SIGALRM, receive_timeout)
@@ -486,15 +541,11 @@ def main():
                 run([*compose, 'up', '-d', '--no-build', '--pull', 'never', '--wait', '--wait-timeout', '120'], env=images)
                 verify_health(sha, with_learning)
                 # Fixed immutable pointers allow restart without access to CI.
-                content = ''.join(f'{key}={value}\n' for key, value in images.items()).encode()
-                write_private(stage / 'images.env', content)
-                os.replace(stage / 'images.env', BASE / '.env')
                 manifest = {'version': sha, 'deployedAt': int(time.time())}
                 for role, artifact in artifacts.items():
                     manifest[role] = artifact['requested']
                     manifest[role + 'ImageId'] = artifact['imageId']
-                write_private(stage / 'release.json', (json.dumps(manifest) + '\n').encode())
-                os.replace(stage / 'release.json', BASE / 'release.json')
+                persist_image_state(stage, images, manifest)
             except Exception:
                 restore_state(stage, existing)
                 if restored_images is not None:

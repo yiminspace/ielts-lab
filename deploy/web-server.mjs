@@ -13,7 +13,7 @@ const server=http.createServer(async(req,res)=>{
   res.setHeader("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://api.yiminlab.site; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
   if(!["GET","HEAD"].includes(req.method)){res.writeHead(405);return res.end();}
   let route;try{route=decodeURIComponent((req.url||"/").split("?")[0]);}catch{res.writeHead(400);return res.end();}
-  if(route==="/health"){
+  if(route==="/health"||route==="/web-health"){
     const body=JSON.stringify({status:"ok",service:"ielts-web",version:process.env.GIT_SHA||"dev"});
     res.writeHead(200,{"Content-Type":"application/json","Cache-Control":"no-store"});return res.end(req.method==="HEAD"?undefined:body);
   }

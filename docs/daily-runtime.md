@@ -44,10 +44,10 @@ runtime 在私有 SQLite 文件中保存任务、已完成步骤和追加事件�
 `deploy/learning.compose.yml` 是可选部署 overlay，不发布 Python 服务端口。Node 与 Python 使用一致的内部 token，
 网关密钥只放 `learning.env`，Node 的 `api-learning.env` 仅包含内部 token。
 
-构建不读取生产配置。私有 `agent-runtime` 仓的 `consumer-image.yml` 用自身 GitHub Token 读取固定 runtime 提交，
-仅接受已进入 IELTS `main` 的完整提交 SHA；离线测试后构建 learning 镜像并返回不可变摘要。
-IELTS 的 `Release IELTS` 手动部署入口接收该摘要，构建同一主分支提交的 API/Web 镜像，再由受保护 production job
-解密四份 IELTS 专属配置、发布三个镜像。公共仓库不保存跨仓库个人令牌或私有源码工件。
+构建不读取生产配置。`Release IELTS` 完整发布时，通过仅能读取 `agent-runtime` 的专用 GitHub App
+检出固定依赖提交；离线测试后构建 learning 镜像，与同提交的 API/Web 镜像一起由受保护 production job
+发布。只有完整发布解密四份 IELTS 专属配置。前端独立发布跳过 learning 构建及 App 授权，仅替换 Web
+容器，不重启 API/learning，也不执行迁移。公共仓库不保存跨仓库个人令牌或私有源码工件。
 
 服务器只拉取并校验固定仓库、平台、提交及摘要；learning 没有公开端口。
 `data/daily` 与 `data/runtime` 绑定为独立私有目录。format2 备份同时停写 API/learning，捕获 PostgreSQL、

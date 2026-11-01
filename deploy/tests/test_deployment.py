@@ -67,6 +67,18 @@ class DeploymentConfigurationTests(unittest.TestCase):
                 with self.assertRaises(SystemExit):runpy.run_path(str(ROOT/'deploy/server/ssh-entry.py'),run_name='__main__')
                 execute.assert_not_called()
 
+    def test_web_ssh_entry_accepts_only_a_fixed_image_and_backend_baseline(self):
+        digest, sha, base = 'sha256:' + '1' * 64, 'a' * 40, 'b' * 40
+        command = 'ielts-web-release ' + ' '.join([digest, sha, base])
+        with mock.patch.dict(os.environ, {'SSH_ORIGINAL_COMMAND': command}), mock.patch.object(os, 'execv') as execute:
+            runpy.run_path(str(ROOT/'deploy/server/ssh-entry.py'), run_name='__main__')
+            self.assertEqual(execute.call_args.args, ('/usr/bin/sudo', ['sudo', '-n', '--', '/usr/local/sbin/ielts-release', '--web-only', digest, sha, base]))
+        for invalid in [command + '\n', command + ';id', command + ' extra', 'ielts-web-release ' + digest + ' ' + sha]:
+            with mock.patch.dict(os.environ, {'SSH_ORIGINAL_COMMAND': invalid}), mock.patch.object(os, 'execv') as execute:
+                with self.assertRaises(SystemExit):
+                    runpy.run_path(str(ROOT/'deploy/server/ssh-entry.py'), run_name='__main__')
+                execute.assert_not_called()
+
     def test_release_tar_accepts_exact_bounded_regular_files_without_extraction(self):
         names=['runtime.env','migration.env','api-learning.env','learning.env']
         def payload(mutation):
