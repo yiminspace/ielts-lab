@@ -25,10 +25,10 @@ from .models import (
     TurnInput,
     WritingFeedback,
 )
-from .profiles import profile, writing_profile
+from .profiles import conversation_profile, profile, writing_profile
 
 WORKFLOW_VERSION = "1"
-PROMPT_VERSION = "2026-11-02.1"
+PROMPT_VERSION = "2026-11-02.2"
 
 
 async def parallel(*coroutines):
@@ -181,7 +181,12 @@ class Generate(BaseNode[LessonState, None, Lesson]):
 
         async def expressions():
             result = await state.gateway.generate(
-                ExpressionPlan, instructions + EXPRESSIONS + writing_profile(source.part), payload
+                ExpressionPlan,
+                instructions
+                + EXPRESSIONS
+                + writing_profile(source.part)
+                + conversation_profile(source.part),
+                payload,
             )
             return result.model_dump(mode="json")
 
@@ -369,6 +374,7 @@ def create_workflows(gateway: PydanticGateway) -> list[Workflow]:
             result = await gateway.generate(
                 ConversationReply,
                 profile(value.source.part)
+                + conversation_profile(value.source.part)
                 + """
 You are the learner's English conversation partner. Continue previous_turns and respond to the
 latest answer or question, following topic changes naturally. First turn uses the lesson opening;
@@ -391,6 +397,7 @@ Outcome does not finish the conversation. Do not invent either person's real exp
             result = await gateway.generate(
                 ExpressionHelp,
                 profile(value.source.part)
+                + conversation_profile(value.source.part)
                 + """
 Help the learner express THEIR intended meaning in natural spoken English. Use history for
 references. Preserve first person, facts, quantities, attitude and reasons. Add no invented details.

@@ -20,7 +20,7 @@ from ielts_learning.models import (
     TurnInput,
     WritingFeedback,
 )
-from ielts_learning.profiles import PROFILES
+from ielts_learning.profiles import CONVERSATION_PROFILES, PROFILES
 from ielts_learning.workflows import create_workflows, parallel, source_quotation, validate_reading
 
 SOURCE = (
@@ -423,6 +423,47 @@ async def test_conversation_uses_latest_history_and_part_profile_for_every_turn(
     assert PROFILES[4] in instructions
     assert payload["previous_turns"][-1]["feedback"]["follow_up"] == "Would you go there?"
     assert payload["answer"] == "Why is it helpful?"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("part", [1, 2, 3, 4])
+async def test_conversation_difficulty_reaches_opening_turns_and_expression_help(part):
+    gateway = Gateway()
+    workflows = create_workflows(gateway)
+    await workflows[0].execute(Context(), LessonInput(source=source(part)))
+    opening = next(call for call in gateway.calls if call[0] is ExpressionPlan)
+    assert CONVERSATION_PROFILES[part] in opening[1]
+    # A saved lesson can still have an old, harder opening. New turns use the
+    # current source Part policy without rewriting the lesson or user's history.
+    saved_lesson = lesson()
+    saved_lesson.conversation.opening = (
+        "What are the wider implications of public libraries for society, "
+        "and how might an alternative perspective change your assessment?"
+    )
+    value = TurnInput(
+        source=source(part),
+        lesson=saved_lesson,
+        text="能简单一点吗？",
+        history=[{"role": "assistant", "text": saved_lesson.conversation.opening}],
+        received_help=True,
+    )
+    for workflow, schema in [(workflows[1], ConversationReply), (workflows[2], ExpressionHelp)]:
+        await workflow.execute(Context(), value)
+        actual_schema, instructions, payload = gateway.calls[-1]
+        assert actual_schema is schema
+        assert CONVERSATION_PROFILES[part] in instructions
+        assert "6.5 is the Part 4 ceiling" in instructions
+        assert "Ask ONE question per turn" in instructions
+        assert "simplify the question" in instructions
+        assert "overly difficult saved opening" in instructions
+        assert payload["received_help"] is True
+        assert payload["previous_turns"] == value.history
+        assert payload["lesson"]["conversation"]["opening"] == saved_lesson.conversation.opening
+    # Conversation-only instructions must not change reading or writing feedback.
+    reading_call = next(call for call in gateway.calls if call[0] is ReadingDraft)
+    assert "CONVERSATION ONLY" not in reading_call[1]
+    await workflows[3].execute(Context(), value.model_copy(update={"level": "basic"}))
+    assert "CONVERSATION ONLY" not in gateway.calls[-1][1]
 
 
 @pytest.mark.asyncio
