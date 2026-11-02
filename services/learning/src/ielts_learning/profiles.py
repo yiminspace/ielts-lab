@@ -24,6 +24,33 @@ def profile(part: int) -> str:
     return TEACHING + "\nCOURSE PROFILE: " + PROFILES[part]
 
 
+CONVERSATION_PROFILES = {
+    1: "Start with a familiar daily-life fact or preference. Use one short question of at most 20 words. A clear answer of 1-2 simple sentences is enough; ask for a reason in a later turn.",
+    2: "Ask about an everyday experience or arrangement using at most 25 words. Encourage 2-3 connected sentences with a detail or simple reason, one step at a time.",
+    3: "Ask for a simple choice, comparison or explanation in a study or everyday context using at most 30 words. Encourage 3-4 sentences with a reason or example; introduce only one comparison at a time.",
+    4: "Cap the challenge at around IELTS speaking band 6.5. Ask one accessible opinion or simple cause-and-effect question about the source topic using at most 35 words. A clear answer of 3-5 sentences with a reason or example is enough. Do not require multiple perspectives, abstract implications, specialist knowledge or advanced academic vocabulary.",
+}
+
+
+def conversation_profile(part: int) -> str:
+    return (
+        "\nCONVERSATION ONLY: Override the general course complexity for the opening, starters, "
+        "partner replies, follow-up questions and expression help. Difficulty rises with the "
+        "listening Part; 6.5 is the Part 4 ceiling, not the entry requirement for every Part. "
+        "Use common spoken words and short sentences, even when the transcript is academic. "
+        "Ask ONE question per turn; do not stack a choice and a why-question. Avoid long role-play "
+        "setups, lists of source details, and recall of names or dates. The learner should be able "
+        "to answer from personal experience or a simple opinion. Optional starters should be "
+        "short, reusable sentence beginnings at the same level. Treat answer lengths as support "
+        "guidance, never a minimum for success. If the learner struggles or asks for help, simplify "
+        "the question and offer a short starter; do not increase difficulty over successive turns "
+        "or imitate an overly difficult saved opening. Expression help must preserve the learner's "
+        "meaning without upgrading it into advanced prose.\nLISTENING PART CONVERSATION PROFILE: "
+        + CONVERSATION_PROFILES[part]
+        + "\n"
+    )
+
+
 WRITING_PROFILES = {
     1: "Write 1-2 sentences for a concrete everyday purpose, such as a request or preference.",
     2: "Write 2-3 connected sentences describing an arrangement or experience with a reason.",
