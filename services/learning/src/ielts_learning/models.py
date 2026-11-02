@@ -94,12 +94,18 @@ class WritingTask(Model):
 
 
 class WritingPlan(Model):
+    tasks: list[WritingTask] = Field(min_length=1, max_length=1)
+
+
+class LegacyWritingPlan(Model):
+    """Read saved three-task courses without rewriting their drafts or history."""
+
     tasks: list[WritingTask] = Field(min_length=3, max_length=3)
 
     @model_validator(mode="after")
     def all_levels(self):
         if {task.level for task in self.tasks} != {"basic", "extension", "challenge"}:
-            raise ValueError("Writing needs one task at each optional level")
+            raise ValueError("Legacy writing needs three distinct levels")
         return self
 
 
@@ -110,6 +116,7 @@ class ExpressionPlan(Model):
 
 
 class Lesson(ExpressionPlan):
+    writing: WritingPlan | LegacyWritingPlan
     reading: Reading
 
 

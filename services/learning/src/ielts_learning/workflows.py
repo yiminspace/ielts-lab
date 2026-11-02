@@ -25,10 +25,10 @@ from .models import (
     TurnInput,
     WritingFeedback,
 )
-from .profiles import profile
+from .profiles import profile, writing_profile
 
 WORKFLOW_VERSION = "1"
-PROMPT_VERSION = "2026-11-01.1"
+PROMPT_VERSION = "2026-11-02.1"
 
 
 async def parallel(*coroutines):
@@ -57,13 +57,14 @@ one unambiguous answer copied exactly from the source, respect max_words, no alt
 or slash-separated answers. Avoid outside knowledge, ambiguous questions and invented details.
 """
 
-EXPRESSIONS = """Create an English-language conversation opening and three optional writing
-tasks grounded in the transcript's topic. Conversation is free exchange: one approachable question,
+EXPRESSIONS = """Create an English-language conversation opening and exactly ONE writing
+task grounded in the transcript's topic. Conversation is free exchange: one approachable question,
 its Chinese meaning and 1-3 optional English starters. Do not script future replies or require a
-specific answer. Writing tasks each have level basic, extension, challenge; use the SAME topic but
-a DIFFERENT purpose or information need from the conversation. Basic asks for 1-2 sentences,
-extension 2-3, challenge 3-5; no essay or spoken-answer transcription. Each has instruction, meaning
-goal and useful optional hints; accept equivalent wording. Title should describe the topic.
+specific answer. The single writing task uses level basic as a stable identifier, not a difficulty
+choice. Follow the listening Part writing profile for complexity and length. Use the SAME topic but
+a DIFFERENT purpose or information need from the conversation; no full essay or spoken-answer
+transcription. Include an English instruction, a Chinese meaning goal and 1-3 optional useful hints;
+accept equivalent wording. Title should describe the topic.
 """
 
 
@@ -180,7 +181,7 @@ class Generate(BaseNode[LessonState, None, Lesson]):
 
         async def expressions():
             result = await state.gateway.generate(
-                ExpressionPlan, instructions + EXPRESSIONS, payload
+                ExpressionPlan, instructions + EXPRESSIONS + writing_profile(source.part), payload
             )
             return result.model_dump(mode="json")
 
@@ -413,6 +414,7 @@ information. This is a faithful restatement, not the partner's answer or a new q
             result = await gateway.generate(
                 WritingFeedback,
                 profile(value.source.part)
+                + writing_profile(value.source.part)
                 + """
 Review the learner's actual writing against the selected task's meaning goal. Explain language
 issues concretely in Chinese; quote actual text in corrections, preserve facts and intention.

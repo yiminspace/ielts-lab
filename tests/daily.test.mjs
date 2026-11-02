@@ -50,7 +50,7 @@ const originalContent = (source) => ({
     starters: ["I would join..."],
   },
   writing: {
-    tasks: ["basic", "extension", "challenge"].map((level) => ({
+    tasks: ["basic"].map((level) => ({
       level,
       instruction: "Describe a club you would join.",
       goal: "Explain one preference.",
