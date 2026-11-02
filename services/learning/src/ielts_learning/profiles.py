@@ -22,3 +22,22 @@ practice questions from the original IELTS questions.
 
 def profile(part: int) -> str:
     return TEACHING + "\nCOURSE PROFILE: " + PROFILES[part]
+
+
+WRITING_PROFILES = {
+    1: "Write 1-2 sentences for a concrete everyday purpose, such as a request or preference.",
+    2: "Write 2-3 connected sentences describing an arrangement or experience with a reason.",
+    3: "Write 3-4 sentences comparing two choices, explaining a preference with an example.",
+    4: "Write one short paragraph of 4-5 sentences: a clear opinion, a reason and an example or simple cause and effect. No specialist knowledge or full essay.",
+}
+
+
+def writing_profile(part: int) -> str:
+    return (
+        "Writing practice target: around IELTS band 6, not 6.5 or advanced academic prose. "
+        "This is a practice goal, not a certified score. Prioritize clear meaning, connected ideas, "
+        "everyday vocabulary and mostly accurate simple sentences with some manageable complex "
+        "sentences. Minor errors are acceptable when meaning is clear. Do not demand sophisticated "
+        "vocabulary or error-free writing to complete the task. "
+        "LISTENING PART WRITING PROFILE: " + WRITING_PROFILES[part]
+    )

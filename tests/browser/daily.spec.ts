@@ -388,6 +388,12 @@ test.describe("Daily real API with an original injected runtime", () => {
     await expect(page.locator(".daily-message-user")).toHaveCount(2);
 
     await page.getByRole("tab", { name: "写作练习" }).click();
+    await expect(
+      page.getByText("一道写作练习", { exact: false }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /^(基础|延伸|挑战)$/ }),
+    ).toHaveCount(0);
     const writing = page.getByRole("textbox", {
       name: "写下你的表达",
       exact: true,
@@ -407,6 +413,12 @@ test.describe("Daily real API with an original injected runtime", () => {
     await writing.fill("Original revision that I will finish later.");
     await page.reload();
     await page.getByRole("tab", { name: "写作练习" }).click();
+    await expect(
+      page.getByText("一道写作练习", { exact: false }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /^(基础|延伸|挑战)$/ }),
+    ).toHaveCount(0);
     await expect(writing).toHaveValue(
       "Original revision that I will finish later.",
     );

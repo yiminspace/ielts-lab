@@ -522,16 +522,17 @@ function validateContent(value, source) {
   if (
     !object(value.writing) ||
     !Array.isArray(value.writing.tasks) ||
-    value.writing.tasks.length !== 3 ||
-    !["basic", "extension", "challenge"].every((level) =>
-      value.writing.tasks.some(
-        (task) =>
-          task.level === level &&
-          safeText(task.instruction, 6000) &&
-          safeText(task.goal, 3000) &&
-          Array.isArray(task.hints) &&
-          task.hints.every((v) => safeText(v, 3000)),
-      ),
+    ![1, 3].includes(value.writing.tasks.length) ||
+    new Set(value.writing.tasks.map((task) => task?.level)).size !==
+      value.writing.tasks.length ||
+    !value.writing.tasks.every(
+      (task) =>
+        object(task) &&
+        ["basic", "extension", "challenge"].includes(task.level) &&
+        safeText(task.instruction, 6000) &&
+        safeText(task.goal, 3000) &&
+        Array.isArray(task.hints) &&
+        task.hints.every((v) => safeText(v, 3000)),
     )
   )
     throw failure(502, "写作任务格式不正确");
@@ -1234,7 +1235,11 @@ export function createDaily({
             };
             if (kind === "writing") {
               const level = body.level || "basic";
-              if (!["basic", "extension", "challenge"].includes(level))
+              if (
+                !lesson.content.writing.tasks.some(
+                  (task) => task.level === level,
+                )
+              )
                 throw failure(400, "写作任务级别无效");
               if (
                 body.action &&

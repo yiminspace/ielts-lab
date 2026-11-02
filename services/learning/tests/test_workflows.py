@@ -103,7 +103,7 @@ def expressions():
                         "goal": "Ask about availability.",
                         "hints": ["Could I reserve..."],
                     }
-                    for level in ["basic", "extension", "challenge"]
+                    for level in ["basic"]
                 ]
             },
         }
@@ -449,12 +449,12 @@ async def test_writing_uses_selected_task_and_question_action():
         source=source(),
         lesson=lesson(),
         text="Why use could?",
-        level="challenge",
+        level="basic",
         action="question",
     )
     await create_workflows(gateway)[3].execute(Context(), value)
     payload = gateway.calls[-1][2]
-    assert payload["task"]["level"] == "challenge"
+    assert payload["task"]["level"] == "basic"
     assert payload["action"] == "question"
 
 
@@ -535,3 +535,36 @@ async def test_gateway_retries_chinese_questions_before_returning_reading():
     assert len(calls) == 2
     assert result.questions[0].prompt == "When does the library open?"
     assert result.translation.startswith("河畔图书馆")
+
+
+def test_new_writing_plan_requires_one_task_but_saved_courses_keep_three():
+    plan = expressions().model_dump()
+    task = plan["writing"]["tasks"][0]
+    plan["writing"]["tasks"] = [
+        {**task, "level": level} for level in ("basic", "extension", "challenge")
+    ]
+    with pytest.raises(ValidationError):
+        ExpressionPlan.model_validate(plan)
+    saved = Lesson.model_validate(
+        {**plan, "reading": {**reading().model_dump(), "passage": SOURCE}}
+    )
+    assert len(saved.writing.tasks) == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("part", [1, 2, 3, 4])
+async def test_writing_part_policy_reaches_generation_and_feedback(part):
+    from ielts_learning.profiles import WRITING_PROFILES
+
+    gateway = Gateway()
+    workflows = create_workflows(gateway)
+    await workflows[0].execute(Context(), LessonInput(source=source(part)))
+    expression_call = next(call for call in gateway.calls if call[0] is ExpressionPlan)
+    assert "exactly ONE writing" in expression_call[1]
+    assert WRITING_PROFILES[part] in expression_call[1]
+    assert "around IELTS band 6" in expression_call[1]
+    await workflows[3].execute(
+        Context(), TurnInput(source=source(part), lesson=lesson(), text="Could I book a room?")
+    )
+    assert WRITING_PROFILES[part] in gateway.calls[-1][1]
+    assert "Minor errors are acceptable" in gateway.calls[-1][1]

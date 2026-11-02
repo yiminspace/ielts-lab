@@ -62,7 +62,7 @@ def expression_plan():
                         "goal": "Ask about availability.",
                         "hints": ["Are there any places..."],
                     }
-                    for level in ("basic", "extension", "challenge")
+                    for level in ("basic",)
                 ]
             },
         }

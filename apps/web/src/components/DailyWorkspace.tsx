@@ -39,11 +39,6 @@ const noCapabilities: DailyCapabilities = {
   asr: false,
   tts: false,
 };
-const levelNames: Record<WritingLevel, string> = {
-  basic: "基础",
-  extension: "延伸",
-  challenge: "挑战",
-};
 const partDescriptions = [
   "熟悉的生活话题，先表达一个清楚的意思。",
   "说明经历和安排，再补充原因与细节。",
@@ -1145,36 +1140,35 @@ function Writing({
   disabled: boolean;
   send: Send;
 }) {
+  const tasks = lesson.content!.writing.tasks;
+  // Keep an in-progress legacy task; otherwise choose by listening Part.
+  const saved = lesson.writing?.draft;
+  const latest = lesson.writing?.submissions.at(-1);
+  const preferred = saved?.text?.trim()
+    ? saved.level
+    : latest?.level ||
+      (["basic", "extension", "challenge", "challenge"] as WritingLevel[])[
+        lesson.source.part - 1
+      ];
+  const task = tasks.find((entry) => entry.level === preferred) || tasks[0];
   const draft = useDraft(
     lesson,
     "writing",
     {
       text: lesson.writing?.draft?.text || "",
-      level: lesson.writing?.draft?.level || ("basic" as WritingLevel),
+      level: task.level,
     },
     send,
   );
   const [question, setQuestion] = useState("");
-  const tasks = lesson.content!.writing.tasks;
-  const task =
-    tasks.find((entry) => entry.level === draft.value.level) || tasks[0];
   const submissions = (lesson.writing?.submissions || []).filter(
-    (entry) => entry.level === task.level && entry.action !== "ask",
+    (entry) => entry.action !== "ask" && entry.action !== "question",
   );
   return (
     <div className="daily-writing">
-      <div className="daily-levels" aria-label="写作层次">
-        {tasks.map((entry) => (
-          <button
-            key={entry.level}
-            aria-pressed={task.level === entry.level}
-            disabled={disabled}
-            onClick={() => draft.update({ ...draft.value, level: entry.level })}
-          >
-            {levelNames[entry.level]}
-          </button>
-        ))}
-      </div>
+      <p className="muted">
+        Part {lesson.source.part} · 一道写作练习 · 目标 6 分左右
+      </p>
       <section className="daily-writing-prompt">
         <h2>{task.instruction}</h2>
         <p>{task.goal}</p>
@@ -1188,6 +1182,14 @@ function Writing({
       {submissions.map((submission, index) => (
         <article className="daily-writing-feedback" key={submission.id}>
           <span>第 {index + 1} 次表达</span>
+          {submission.level !== task.level && (
+            <p>
+              {
+                tasks.find((entry) => entry.level === submission.level)
+                  ?.instruction
+              }
+            </p>
+          )}
           <p lang="en" className="daily-student-writing">
             {submission.text}
           </p>
