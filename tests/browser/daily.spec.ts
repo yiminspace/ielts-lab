@@ -241,7 +241,10 @@ test.describe("Daily real API with an original injected runtime", () => {
       calls.find((call) => call.workflow === "ielts.lesson")?.input,
     ).toMatchObject({ source: { part: 1 }, target_band: 6.5 });
 
-    await page.getByRole("tab", { name: "阅读理解" }).click();
+    await expect(page.getByRole("tab", { name: "阅读理解" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     const passage = page.locator(".daily-passage-text");
     await passage.scrollIntoViewIfNeeded();
     // Use a real mouse drag for the reported missing selection action.
@@ -382,6 +385,11 @@ test.describe("Daily real API with an original injected runtime", () => {
     );
     await conversation.fill("Original unsent conversation draft.");
     await page.reload();
+    await expect(page.getByRole("tab", { name: "阅读理解" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await page.getByRole("tab", { name: "主题交流" }).click();
     await expect(conversation).toHaveValue(
       "Original unsent conversation draft.",
     );
@@ -471,6 +479,7 @@ test.describe("Daily real API with an original injected runtime", () => {
     await page.reload();
     await expect(page.getByRole("alert")).toContainText("上次操作尚未收到确认");
     await page.getByRole("button", { name: "重试上次操作" }).click();
+    await page.getByRole("tab", { name: "主题交流" }).click();
     await expect(page.locator(".daily-message-user")).toHaveCount(4);
     expect(requestIds).toHaveLength(2);
     expect(requestIds[0]).toBe(requestIds[1]);
@@ -530,6 +539,7 @@ test.describe("Daily real API with an original injected runtime", () => {
       .click();
     await expect(conversation).toBeDisabled();
     await page.reload();
+    await page.getByRole("tab", { name: "主题交流" }).click();
     await expect(
       page.getByRole("button", { name: "继续这次交流", exact: true }),
     ).toBeVisible();
@@ -573,6 +583,85 @@ test.describe("Daily reading allows unanswered questions", () => {
   });
   test.afterEach(async () => {
     await fixture?.stop();
+  });
+
+  test("opens reading by default and scrolls the desktop panes independently", async ({
+    page,
+    context,
+  }) => {
+    await login(context, fixture);
+    const seed = await fixture.app.daily.ensure(
+      fixture.hosted ? owner : "00000000-0000-4000-8000-000000000001",
+      {
+        id: crypto.randomUUID(),
+        itemId: "demo-listening",
+        kind: "listening",
+        answers: {},
+        createdAt: new Date().toISOString(),
+      },
+    );
+    // Extend only the browser response with original demo text to exercise a
+    // passage longer than the viewport, without changing archive material.
+    await page.route(`**/api/daily/${seed.id}`, async (route) => {
+      const response = await route.fetch();
+      const lesson = await response.json();
+      if (lesson.content)
+        lesson.content.reading.passage = Array(30)
+          .fill(lesson.content.reading.passage)
+          .join("\n\n");
+      await route.fulfill({ response, json: lesson });
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`/#/daily/${seed.id}`);
+    await expect(page.getByRole("tab", { name: "阅读理解" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    const passage = page.locator(".daily-passage");
+    const questions = page.locator(".daily-questions");
+    await expect(passage).toBeVisible();
+    await questions.scrollIntoViewIfNeeded();
+    await page.evaluate(() =>
+      scrollTo(0, document.documentElement.scrollHeight),
+    );
+    const wheelPane = async (pane: typeof passage, other: typeof passage) => {
+      const otherTop = await other.evaluate((element) => element.scrollTop);
+      const windowTop = await page.evaluate(() => scrollY);
+      const box = (await pane.boundingBox())!;
+      await pane.hover({ position: { x: box.width / 2, y: box.height / 2 } });
+      await page.mouse.wheel(0, 250);
+      await expect
+        .poll(() => pane.evaluate((element) => element.scrollTop))
+        .toBeGreaterThan(0);
+      expect(await other.evaluate((element) => element.scrollTop)).toBe(
+        otherTop,
+      );
+      expect(await page.evaluate(() => scrollY)).toBe(windowTop);
+    };
+    await wheelPane(passage, questions);
+    await wheelPane(questions, passage);
+    await page.screenshot({ path: "/tmp/ielts-daily-independent-scroll.png" });
+    await page.getByRole("tab", { name: "主题交流" }).click();
+    await page.getByRole("link", { name: "全部听后练习" }).click();
+    await expect(
+      page.getByRole("heading", { name: "听完之后，接着用英语。" }),
+    ).toBeVisible();
+    await page.goto(`/#/daily/${seed.id}`);
+    await expect(page.getByRole("tab", { name: "阅读理解" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect
+      .poll(() =>
+        passage.evaluate((element) => getComputedStyle(element).overflowY),
+      )
+      .toBe("visible");
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
   });
 
   for (const partial of [false, true]) {

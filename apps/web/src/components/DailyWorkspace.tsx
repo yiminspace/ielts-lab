@@ -130,7 +130,7 @@ export default function DailyWorkspace({ id }: { id?: string }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
   const [tab, setTab] = useState<"reading" | "conversation" | "writing">(
-    "conversation",
+    "reading",
   );
   const current = useRef<DailyLesson | null>(null);
   const alive = useRef(true);
@@ -168,6 +168,7 @@ export default function DailyWorkspace({ id }: { id?: string }) {
     alive.current = true;
     current.current = null;
     setLesson(null);
+    setTab("reading");
     setLoading(true);
     setError("");
     setHasRetry(false);

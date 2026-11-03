@@ -180,6 +180,19 @@
   padding-right: 32px;
   border-right: 1px solid var(--line);
 }
+@media (min-width: 761px) {
+  .daily-passage,
+  .daily-questions {
+    height: max(320px, calc(100dvh - 120px));
+    min-width: 0;
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+    scrollbar-gutter: stable;
+  }
+  .daily-questions {
+    padding-right: 12px;
+  }
+}
 .daily-passage > p {
   color: var(--ink);
   font-size: 17px;
