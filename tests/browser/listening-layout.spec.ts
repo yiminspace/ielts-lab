@@ -146,6 +146,9 @@ test("compact listening keeps the diagram next to a clickable matrix and preserv
   await page.getByRole("button", { name: "交卷检查", exact: true }).click();
   await page.getByRole("button", { name: "确认交卷", exact: true }).click();
   await expect(
+    page.getByText("Review · 作答复盘", { exact: true }),
+  ).toBeVisible();
+  await expect(
     page.getByRole("radio", { name: "第 15 题，D", exact: true }),
   ).toBeDisabled();
   await expect(page.locator(".exam-matrix-feedback")).toHaveCount(6);

@@ -292,6 +292,9 @@
 .practice-frame.pf-compact .pf-mode {
   display: none;
 }
+.practice-frame.pf-compact .pf-mode-review {
+  display: inline;
+}
 .pf-compact .exam-session-instruction {
   gap: 6px 16px;
 }

@@ -117,7 +117,9 @@ export default function PracticeFrame({
       </header>
       <div className="pf-instruction">
         <div>{instruction || <strong>{skill}</strong>}</div>
-        <span className="pf-mode">
+        <span
+          className={`pf-mode ${mode === "review" ? "pf-mode-review" : ""}`}
+        >
           {mode === "review" ? "Review · 作答复盘" : "Practice · 日常练习"}
         </span>
         {!compact && actions && <div className="pf-actions">{actions}</div>}
