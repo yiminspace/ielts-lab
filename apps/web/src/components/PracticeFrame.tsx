@@ -19,6 +19,7 @@ export type PracticeFrameProps = {
   actions?: ReactNode;
   tools?: ReactNode;
   footer?: ReactNode;
+  compact?: boolean;
   children: ReactNode;
   onExit?: () => void;
   onExam?: () => void;
@@ -33,6 +34,7 @@ export default function PracticeFrame({
   actions,
   tools,
   footer,
+  compact = false,
   children,
   onExit,
   onExam,
@@ -79,7 +81,7 @@ export default function PracticeFrame({
   return (
     <div
       {...ieltsExamAttrs(contrast, textSize)}
-      className={`vg vg-exam computer-test practice-frame ct-contrast-${contrast} ct-size-${textSize}`}
+      className={`vg vg-exam computer-test practice-frame ${compact ? "pf-compact" : ""} ct-contrast-${contrast} ct-size-${textSize}`}
     >
       <header className="pf-header">
         <button className="pf-back" aria-label="返回" onClick={exit}>
@@ -94,6 +96,7 @@ export default function PracticeFrame({
           </span>
         </div>
         <div className="pf-status">{status}</div>
+        {compact && actions && <div className="pf-actions">{actions}</div>}
         <div className="pf-header-actions">
           <button
             ref={notesTrigger}
@@ -117,7 +120,7 @@ export default function PracticeFrame({
         <span className="pf-mode">
           {mode === "review" ? "Review · 作答复盘" : "Practice · 日常练习"}
         </span>
-        {actions && <div className="pf-actions">{actions}</div>}
+        {!compact && actions && <div className="pf-actions">{actions}</div>}
       </div>
       {saveError && (
         <div className="pf-save-message" role="status">

@@ -47,6 +47,7 @@ import {
   splitByKeyboard,
 } from "../lib/computer-test.mjs";
 import PracticeFrame from "./PracticeFrame";
+import { diagramMatchingMatrix } from "../lib/practice-matching.mjs";
 import { DailyAttemptBanner } from "./DailyWorkspace";
 import "../exam.css";
 
@@ -616,7 +617,16 @@ function ExamSession({
   function go(id: string) {
     setActive(id);
     const target = document.getElementById(`question-${id}`);
-    scrollQuestionWithinPane(questionsPanel.current, target);
+    const mapGroup = target?.closest<HTMLElement>(".exam-question-group");
+    const showMap =
+      target?.closest(".exam-map-matching") &&
+      mapGroup &&
+      questionsPanel.current &&
+      mapGroup.offsetHeight <= questionsPanel.current.clientHeight;
+    scrollQuestionWithinPane(
+      questionsPanel.current,
+      showMap ? mapGroup : target,
+    );
     const control = target?.querySelector<HTMLElement>(
       "input:not(:disabled), select:not(:disabled)",
     );
@@ -1020,6 +1030,9 @@ function ExamSession({
   }
 
   function groupContent(group: QuestionGroup) {
+    const matrix = mediaUrl(item, group.optionsImage)
+      ? diagramMatchingMatrix(group)
+      : null;
     const slotRows = group.rows.flatMap((row) =>
       Array.from({ length: row.slots }, (_, slot) => ({ row, slot })),
     );
@@ -1032,12 +1045,14 @@ function ExamSession({
       ["0", "4"].includes(group.type) && count === slotRows.length && count > 0;
     return (
       <section className="exam-question-group" key={group.id}>
-        <header>
-          <span>{group.title}</span>
-          <strong>
-            Questions {group.start}–{group.end}
-          </strong>
-        </header>
+        {!/^Questions\b/i.test(textOf(group.description).trim()) && (
+          <header>
+            <span>{group.title}</span>
+            <strong>
+              Questions {group.start}–{group.end}
+            </strong>
+          </header>
+        )}
         <HtmlContent
           html={group.description}
           item={item}
@@ -1046,7 +1061,7 @@ function ExamSession({
         {group.optionsTitle && (
           <HtmlContent html={group.optionsTitle} item={item} />
         )}{" "}
-        {group.type === "4" && (
+        {group.type === "4" && !matrix && (
           <div className="exam-option-bank">
             {group.rows[0]?.options.map((option) => (
               <div key={option.value}>
@@ -1056,14 +1071,97 @@ function ExamSession({
             ))}
           </div>
         )}
-        {group.optionsImage && mediaUrl(item, group.optionsImage) && (
-          <img
-            className="exam-diagram"
-            src={mediaUrl(item, group.optionsImage)}
-            alt="匹配选项图"
-          />
+        {matrix && (
+          <div className="exam-map-matching">
+            <img
+              className="exam-map"
+              src={mediaUrl(item, group.optionsImage)}
+              alt="匹配选项图"
+            />
+            <div
+              className="exam-matrix-frame"
+              tabIndex={0}
+              role="region"
+              aria-label="地图匹配选项，可横向滚动"
+            >
+              <table className="exam-match-matrix" aria-label="地图匹配答案">
+                <thead>
+                  <tr>
+                    <th scope="col">题目</th>
+                    {matrix.options.map((option) => (
+                      <th scope="col" key={option.value}>
+                        {option.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {matrix.rows.map((statement) => {
+                    const row = group.rows.find(
+                      (row) => row.id === statement.rowId,
+                    )!;
+                    return (
+                      <Fragment key={row.id}>
+                        <tr
+                          id={`question-${row.id}`}
+                          tabIndex={-1}
+                          className={
+                            active === row.id ? "exam-matrix-active" : ""
+                          }
+                        >
+                          <th scope="row">
+                            <span className="exam-number">{row.number}</span>{" "}
+                            <HtmlContent html={statement.html} item={item} />
+                          </th>
+                          {matrix.options.map((option) => (
+                            <td
+                              key={option.value}
+                              className={
+                                answers[row.id] === option.value
+                                  ? "selected"
+                                  : ""
+                              }
+                            >
+                              <label>
+                                <input
+                                  type="radio"
+                                  name={`${item.id}-${row.id}`}
+                                  value={option.value}
+                                  aria-label={`第 ${row.number} 题，${option.label}`}
+                                  checked={answers[row.id] === option.value}
+                                  disabled={submitted}
+                                  onFocus={() => setActive(row.id)}
+                                  onChange={() => setAnswer(row, option.value)}
+                                />
+                              </label>
+                            </td>
+                          ))}
+                        </tr>
+                        {submitted && (
+                          <tr className="exam-matrix-feedback">
+                            <td colSpan={matrix.options.length + 1}>
+                              {solution(row)}
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
-        {group.content && (
+        {!matrix &&
+          group.optionsImage &&
+          mediaUrl(item, group.optionsImage) && (
+            <img
+              className="exam-diagram"
+              src={mediaUrl(item, group.optionsImage)}
+              alt="匹配选项图"
+            />
+          )}
+        {!matrix && group.content && (
           <HtmlContent
             html={group.content}
             item={item}
@@ -1120,7 +1218,7 @@ function ExamSession({
               alt="题目图示"
             />
           )}
-        {["1", "2", "3"].includes(group.type) ? (
+        {matrix ? null : ["1", "2", "3"].includes(group.type) ? (
           group.rows.map(choices)
         ) : (
           <>
@@ -1168,6 +1266,7 @@ function ExamSession({
   const activeRow = rows[activeIndex];
   return (
     <PracticeFrame
+      compact
       item={item}
       mode={submitted ? "review" : "practice"}
       onExit={onExit}
@@ -1518,10 +1617,12 @@ function ExamSession({
             aria-label="Questions"
             tabIndex={0}
           >
-            <div className="exam-panel-heading">
-              <strong>答题区</strong>
-              <span>认真阅读每组字数与选项要求</span>
-            </div>
+            {!listening && (
+              <div className="exam-panel-heading">
+                <strong>答题区</strong>
+                <span>认真阅读每组字数与选项要求</span>
+              </div>
+            )}
             {groups.length ? (
               groups.map(groupContent)
             ) : (

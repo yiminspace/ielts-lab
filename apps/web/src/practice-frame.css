@@ -1,4 +1,3 @@
-
 .practice-frame .pf-header {
   display: flex;
   align-items: center;
@@ -258,5 +257,81 @@
   .practice-frame .pf-actions button {
     min-height: 44px;
     min-width: 44px;
+  }
+}
+
+/* Objective practice leaves most of the viewport to the questions. */
+.practice-frame.pf-compact .pf-header {
+  min-height: 48px;
+  padding: 5px 16px;
+  gap: 14px;
+}
+.practice-frame.pf-compact .pf-brand {
+  font-size: 18px;
+}
+.practice-frame.pf-compact .pf-identity {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 12px;
+}
+.practice-frame.pf-compact .pf-identity span {
+  display: none;
+}
+.practice-frame.pf-compact .pf-status,
+.practice-frame.pf-compact .pf-header-actions {
+  gap: 10px;
+}
+.practice-frame.pf-compact .pf-actions button {
+  padding: 5px 10px;
+}
+.practice-frame.pf-compact .pf-instruction {
+  min-height: 30px;
+  padding: 4px 20px;
+  font-size: 13px;
+}
+.practice-frame.pf-compact .pf-mode {
+  display: none;
+}
+.pf-compact .exam-session-instruction {
+  gap: 6px 16px;
+}
+.pf-compact .exam-session-instruction > span {
+  display: none;
+}
+.pf-compact .exam-session-instruction small {
+  flex-basis: auto;
+  font-size: 12px;
+}
+@media (max-width: 720px) {
+  .practice-frame.pf-compact .pf-header {
+    gap: 6px;
+    flex-wrap: nowrap;
+    padding-inline: 8px;
+  }
+  .practice-frame.pf-compact .pf-brand,
+  .practice-frame.pf-compact .pf-header-actions button span {
+    display: none;
+  }
+  .practice-frame.pf-compact .pf-identity {
+    min-width: 0;
+  }
+  .practice-frame.pf-compact .pf-identity strong {
+    font-size: 14px;
+  }
+  .pf-compact .exam-timer > span,
+  .pf-compact .exam-timer > svg {
+    display: none;
+  }
+  .pf-compact .exam-session-status {
+    gap: 4px;
+    font-size: 12px;
+  }
+  .practice-frame.pf-compact .pf-actions button {
+    font-size: 12px;
+    gap: 3px;
+    padding: 5px;
+  }
+  .practice-frame.pf-compact .pf-actions button svg {
+    display: none;
   }
 }

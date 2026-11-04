@@ -950,3 +950,199 @@
     padding: 7px;
   }
 }
+
+.pf-compact .exam-audio-bar {
+  padding: 4px 20px;
+  gap: 12px;
+  border-bottom: 0;
+}
+.pf-compact .exam-audio-bar button {
+  padding: 5px 10px;
+}
+.pf-compact .exam-question-nav {
+  padding: 4px 16px;
+  gap: 12px;
+}
+.pf-compact .exam-questions-panel {
+  container-type: inline-size;
+}
+.pf-compact .exam-question-group {
+  padding: 20px 24px;
+}
+.pf-compact
+  .exam-listening
+  .exam-questions-panel:only-child
+  .exam-question-group {
+  max-width: 1440px;
+}
+.pf-compact .exam-instructions {
+  margin-bottom: 14px;
+  line-height: 1.4;
+}
+.pf-compact .exam-choice-question {
+  margin: 12px 0 0;
+}
+.pf-compact .exam-choice-question legend {
+  font-weight: 700;
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+.pf-compact .exam-row-actions {
+  justify-content: flex-start;
+  margin: 0 0 6px;
+}
+.pf-compact .exam-choice {
+  margin: 0;
+  padding: 3px 6px;
+  gap: 8px;
+  line-height: 1.45;
+}
+.pf-compact .exam-choice .exam-rich {
+  line-height: 1.45;
+}
+.pf-compact .exam-choice input {
+  flex-shrink: 0;
+  margin: 4px 0 0;
+}
+.pf-compact .exam-choice-letter::after {
+  content: ".";
+}
+.exam-map-matching {
+  display: grid;
+  gap: 24px;
+  align-items: start;
+}
+.exam-map {
+  display: block;
+  width: 100%;
+  max-width: 560px;
+  height: auto;
+  margin-inline: auto;
+}
+.exam-matrix-frame {
+  min-width: 0;
+  overflow-x: auto;
+}
+.exam-match-matrix {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+.exam-match-matrix th,
+.exam-match-matrix td {
+  border: 1px solid var(--ct-line);
+  padding: 0;
+}
+.exam-match-matrix thead th {
+  height: 40px;
+  text-align: center;
+  font-weight: 700;
+}
+.exam-match-matrix thead th:first-child {
+  width: 28%;
+}
+.exam-match-matrix tbody th {
+  text-align: left;
+  padding: 10px 12px;
+  font-weight: 400;
+  line-height: 1.35;
+}
+.exam-match-matrix tbody th .exam-rich {
+  display: inline;
+}
+.exam-match-matrix .exam-number {
+  margin-right: 4px;
+}
+.exam-match-matrix td label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  height: 100%;
+  cursor: pointer;
+}
+.exam-match-matrix td.selected {
+  background: var(--ct-panel);
+  box-shadow: inset 0 0 0 2px var(--ct-focus);
+}
+.exam-match-matrix input {
+  accent-color: var(--ct-focus);
+  width: 17px;
+  height: 17px;
+  cursor: pointer;
+}
+.exam-matrix-active > th {
+  box-shadow: inset 3px 0 var(--ct-focus);
+}
+.exam-match-matrix tr:focus-visible,
+.exam-matrix-frame:focus-visible {
+  outline: 2px solid var(--ct-focus);
+  outline-offset: -2px;
+}
+.exam-matrix-feedback .exam-solution {
+  margin: 0;
+}
+.exam-matrix-feedback > td {
+  padding: 4px 8px;
+}
+@container (min-width: 1000px) {
+  .exam-map-matching {
+    grid-template-columns: minmax(0, 0.85fr) minmax(620px, 1.2fr);
+  }
+  .exam-map {
+    position: sticky;
+    top: 12px;
+  }
+}
+@media (max-width: 720px) {
+  .practice-frame.pf-compact .exam-audio-bar {
+    flex-wrap: nowrap;
+    gap: 6px;
+    padding: 4px 8px;
+  }
+  .pf-compact .exam-audio-bar audio {
+    flex-basis: auto;
+    width: 120px;
+    min-width: 100px;
+  }
+  .pf-compact .exam-audio-bar label {
+    font-size: 0;
+  }
+  .pf-compact .exam-audio-bar select {
+    font-size: 12px;
+    padding: 3px;
+  }
+  .pf-compact .exam-audio-bar button {
+    font-size: 12px;
+    padding: 5px;
+  }
+  .pf-compact .exam-question-group {
+    padding: 16px;
+  }
+  .pf-compact .exam-question-nav {
+    padding: 4px 8px;
+    gap: 6px;
+  }
+  .exam-match-matrix {
+    min-width: 600px;
+  }
+  .exam-match-matrix tbody th {
+    position: sticky;
+    left: 0;
+    background: var(--ct-bg);
+    z-index: 1;
+  }
+}
+@media (pointer: coarse) {
+  .pf-compact .exam-choice {
+    min-height: 44px;
+    align-items: center;
+  }
+  .pf-compact .exam-choice input {
+    margin-top: 0;
+  }
+  .exam-match-matrix td label {
+    min-width: 44px;
+  }
+}
