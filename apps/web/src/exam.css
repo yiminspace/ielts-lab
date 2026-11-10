@@ -671,6 +671,7 @@
   background: transparent;
   color: var(--ct-muted);
   font-size: 0.7em;
+  -webkit-user-select: none;
   user-select: none;
 }
 .computer-test .exam-line-play:hover:not(:disabled) {
