@@ -48,6 +48,7 @@ import {
 } from "../lib/computer-test.mjs";
 import PracticeFrame from "./PracticeFrame";
 import { diagramMatchingMatrix } from "../lib/practice-matching.mjs";
+import { copyTranscript } from "../lib/transcript-copy";
 import { DailyAttemptBanner } from "./DailyWorkspace";
 import "../exam.css";
 
@@ -1680,7 +1681,7 @@ function ExamSession({
                     : "文字可拖选，点 ▶ 开始精听"}
                 </small>
               </div>
-              <div className="exam-transcript">
+              <div className="exam-transcript" onCopy={copyTranscript}>
                 {lines.length ? (
                   lines.map((line, i) => (
                     <div
@@ -1719,7 +1720,7 @@ function ExamSession({
                             第 {transcriptTarget.number} 题依据
                           </span>
                         )}
-                        {line.text}
+                        <span data-transcript-source>{line.text}</span>
                         {translation && line.translation && (
                           <small>{line.translation}</small>
                         )}
