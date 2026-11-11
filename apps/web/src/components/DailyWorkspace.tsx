@@ -500,7 +500,7 @@ export default function DailyWorkspace({ id }: { id?: string }) {
                       : lesson.pending.kind === "writing"
                         ? "正在阅读你的写作…"
                         : lesson.pending.kind === "dictation"
-                          ? "正在核对听写…"
+                          ? "正在生成重听提示…"
                           : lesson.pending.kind === "transcription"
                             ? "录音已保存，正在识别…"
                             : lesson.pending.kind === "speech"

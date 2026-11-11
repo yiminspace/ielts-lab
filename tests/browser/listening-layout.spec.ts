@@ -1,11 +1,13 @@
 import { test, expect } from "@playwright/test";
 import { startBrowserFixture, seedIdentity } from "./fixture.mjs";
 
+// Each case owns its progress store, including submitted reviews and delayed draft writes.
 let fixture: Awaited<ReturnType<typeof startBrowserFixture>>;
-test.beforeAll(async () => {
+test.beforeEach(async () => {
   fixture = await startBrowserFixture();
 });
-test.afterAll(async () => {
+test.afterEach(async ({ page }) => {
+  await page.close();
   await fixture?.stop();
 });
 

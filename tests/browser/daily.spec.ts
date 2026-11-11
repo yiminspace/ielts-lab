@@ -131,7 +131,12 @@ const runtime = {
       };
     else if (request.workflow === "ielts.dictation")
       output = {
-        feedback_zh: "对照原句核对漏写的词，留意冠词和介词。",
+        feedback_zh:
+          request.input.text === "long-feedback"
+            ? "**历史反馈**\n\n" +
+              "这是旧版较长的反馈，需要按需展开查看。".repeat(15) +
+              '<img src="x" onerror="window.__unsafeFeedback = true"><script>window.__unsafeFeedback = true</script>'
+            : "核对漏写的 **the** 和 **on**。",
         practice_zh: "重听完整短语，核对 the 和 on 的位置。",
       };
     else if (request.workflow === "ielts.expression")
@@ -596,6 +601,11 @@ test.describe("Daily reading allows unanswered questions", () => {
     context,
   }) => {
     await login(context, fixture);
+    let hintRequests = 0;
+    page.on("request", (request) => {
+      if (request.method() === "POST" && request.url().endsWith("/dictation"))
+        hintRequests++;
+    });
     const seed = await fixture.app.daily.ensure(
       fixture.hosted ? owner : "00000000-0000-4000-8000-000000000001",
       {
@@ -629,6 +639,14 @@ test.describe("Daily reading allows unanswered questions", () => {
         body: '<svg xmlns="http://www.w3.org/2000/svg" width="900" height="200"><rect width="900" height="200" fill="white"/><text x="20" y="40">Original learning centre: A Reception, B Library</text></svg>',
       }),
     );
+    await page.addInitScript(() => {
+      const key = "ielts-listening:demo-listening";
+      if (!localStorage.getItem(key))
+        localStorage.setItem(
+          key,
+          JSON.stringify({ "0": "以前保存的句子笔记" }),
+        );
+    });
     await page.goto(`/#/daily/${seed.id}`);
     await page.getByRole("tab", { name: "分段听", exact: true }).click();
     const panel = page.getByRole("tabpanel", { name: "分段听", exact: true });
@@ -705,6 +723,10 @@ test.describe("Daily reading allows unanswered questions", () => {
     );
     await panel.getByLabel("选择听力段落").selectOption("0");
     await panel.getByText("整段笔记", { exact: true }).click();
+    await panel.getByText("以往句子笔记", { exact: true }).click();
+    await expect(
+      panel.getByText("以前保存的句子笔记", { exact: false }),
+    ).toBeVisible();
     await panel
       .getByLabel("本段笔记", { exact: true })
       .fill("Original segment note");
@@ -729,13 +751,13 @@ test.describe("Daily reading allows unanswered questions", () => {
     await expect
       .poll(() => player.evaluate((node: HTMLAudioElement) => node.currentTime))
       .toBeLessThan(1);
-    await panel.getByLabel("第 1 句笔记", { exact: true }).focus();
+    await panel.getByLabel("第 1 句听写", { exact: true }).focus();
     await page.keyboard.press("r");
-    await expect(panel.getByLabel("第 1 句笔记", { exact: true })).toHaveValue(
+    await expect(panel.getByLabel("第 1 句听写", { exact: true })).toHaveValue(
       "r",
     );
     await panel
-      .getByLabel("第 1 句笔记", { exact: true })
+      .getByLabel("第 1 句听写", { exact: true })
       .fill("留意冠词和介词，重听完整短语。");
     await panel
       .getByLabel("第 1 句听写", { exact: true })
@@ -743,20 +765,62 @@ test.describe("Daily reading allows unanswered questions", () => {
         "Welcome to Riverside learning centre. The new conversation club meets Monday.",
       );
     await panel.getByRole("button", { name: "核对听写", exact: true }).click();
+    expect(hintRequests).toBe(0);
     await expect(panel.getByLabel("第 1 句原文对照")).toBeVisible();
-    await expect(panel.getByLabel("第 1 句 AI 笔记")).toContainText("核对漏写");
+    await panel
+      .getByRole("button", { name: "给我重听提示", exact: true })
+      .click();
+    await expect(panel.getByLabel("第 1 句原文对照")).toBeVisible();
+    await expect(panel.getByLabel("第 1 句重听提示")).toContainText("核对漏写");
+    await expect(
+      panel
+        .getByLabel("第 1 句重听提示")
+        .locator("strong")
+        .filter({ hasText: "the" })
+        .first(),
+    ).toBeVisible();
+    await expect(panel.getByLabel("第 1 句重听提示")).not.toContainText("**");
     await panel
       .getByLabel("第 1 句听写", { exact: true })
       .fill(
         "Welcome to the Riverside learning centre. The new conversation club meets on Monday.",
       );
     await panel.getByRole("button", { name: "核对听写", exact: true }).click();
+    expect(hintRequests).toBe(1);
+    await expect(panel.getByLabel("第 1 句原文对照")).toBeVisible();
+    await panel
+      .getByRole("button", { name: "给我重听提示", exact: true })
+      .click();
     await expect(
-      panel.getByText("历史核对（1）", { exact: true }),
+      panel.getByText("历史提示（1）", { exact: true }),
     ).toBeVisible();
-    await expect(panel.getByLabel("第 1 句笔记", { exact: true })).toHaveValue(
-      "留意冠词和介词，重听完整短语。",
-    );
+    await expect(panel.getByText("我的笔记", { exact: true })).toHaveCount(0);
+    await expect(
+      panel.getByRole("button", { name: "核对听写", exact: true }),
+    ).toBeEnabled();
+    await panel
+      .getByLabel("第 1 句听写", { exact: true })
+      .fill("long-feedback");
+    await panel.getByRole("button", { name: "核对听写", exact: true }).click();
+    expect(hintRequests).toBe(2);
+    await expect(panel.getByLabel("第 1 句原文对照")).toBeVisible();
+    await panel
+      .getByRole("button", { name: "给我重听提示", exact: true })
+      .click();
+    const aiNotes = panel.getByLabel("第 1 句重听提示");
+    await aiNotes
+      .getByRole("button", { name: "展开完整反馈", exact: true })
+      .click();
+    await expect(
+      aiNotes.getByRole("button", { name: "收起反馈", exact: true }),
+    ).toHaveAttribute("aria-expanded", "true");
+    await expect(aiNotes.locator("img,script")).toHaveCount(0);
+    expect(
+      await page.evaluate(() => (window as any).__unsafeFeedback),
+    ).toBeUndefined();
+    await aiNotes
+      .getByRole("button", { name: "收起反馈", exact: true })
+      .click();
     await panel.getByRole("button", { name: "隐藏原文", exact: true }).click();
     await expect(
       panel.getByRole("button", { name: "播放第 1 句", exact: true }),
@@ -774,8 +838,9 @@ test.describe("Daily reading allows unanswered questions", () => {
     await panel
       .getByRole("button", { name: "播放第 1 句", exact: true })
       .click();
-    await expect(panel.getByLabel("第 1 句笔记", { exact: true })).toHaveValue(
-      "留意冠词和介词，重听完整短语。",
+    await expect(panel.getByText("我的笔记", { exact: true })).toHaveCount(0);
+    await expect(panel.getByLabel("第 1 句重听提示")).not.toHaveAttribute(
+      "open",
     );
     await panel.getByRole("button", { name: "暂停", exact: true }).click();
     await panel
@@ -785,7 +850,7 @@ test.describe("Daily reading allows unanswered questions", () => {
     await expect(
       panel.getByRole("button", { name: "已标记 · 还需练", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
-    await panel.getByText("局部循环", { exact: true }).click();
+    await panel.getByText("播放设置", { exact: true }).click();
     await panel.getByRole("slider").fill("0.2");
     await panel
       .getByRole("button", { name: "设为循环起点", exact: true })
@@ -821,7 +886,7 @@ test.describe("Daily reading allows unanswered questions", () => {
       .poll(() => player.evaluate((node: HTMLAudioElement) => node.paused))
       .toBe(false);
     await panel.getByRole("button", { name: "暂停", exact: true }).click();
-    await panel.getByText("局部循环", { exact: true }).click();
+    await panel.getByText("播放设置", { exact: true }).click();
     await page.setViewportSize({ width: 390, height: 844 });
     expect(
       await panel.evaluate((node) => node.scrollWidth <= node.clientWidth),
@@ -843,6 +908,11 @@ test.describe("Daily reading allows unanswered questions", () => {
     context,
   }, testInfo) => {
     await login(context, fixture);
+    let hintRequests = 0;
+    page.on("request", (request) => {
+      if (request.method() === "POST" && request.url().endsWith("/dictation"))
+        hintRequests++;
+    });
     const seed = await fixture.app.daily.ensure(
       fixture.hosted ? owner : "00000000-0000-4000-8000-000000000001",
       {
@@ -954,7 +1024,7 @@ test.describe("Daily reading allows unanswered questions", () => {
       .poll(() => sentences.evaluate((node) => node.scrollTop))
       .toBeGreaterThan(0);
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
-    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.setViewportSize({ width: 1280, height: 480 });
     const transcriptScroll = await sentences.evaluate((node) => node.scrollTop);
     const questions = panel.locator(".listening-questions");
     await questions.hover();
@@ -1003,14 +1073,23 @@ test.describe("Daily reading allows unanswered questions", () => {
       .fill(
         "Welcome to Riverside learning centre. The new conversation club meets Monday.",
       );
-    await panel
-      .getByLabel("第 1 句笔记", { exact: true })
-      .fill("留意 the 和 on，重听完整短语。");
+    await expect(panel.getByText("我的笔记", { exact: true })).toHaveCount(0);
     await panel.getByRole("button", { name: "核对听写", exact: true }).click();
+    await panel
+      .getByRole("button", { name: "给我重听提示", exact: true })
+      .click();
     await expect(
       panel.getByRole("button", { name: "核对听写", exact: true }),
     ).toBeEnabled();
-    await expect(panel.getByLabel("第 1 句 AI 笔记")).toContainText("核对漏写");
+    await expect(panel.getByLabel("第 1 句重听提示")).toContainText("核对漏写");
+    await expect(
+      panel
+        .getByLabel("第 1 句重听提示")
+        .locator("strong")
+        .filter({ hasText: "the" })
+        .first(),
+    ).toBeVisible();
+    await expect(panel.getByLabel("第 1 句重听提示")).not.toContainText("**");
     await panel
       .locator("audio")
       .evaluate((node: HTMLAudioElement) => node.pause());
@@ -1040,6 +1119,33 @@ test.describe("Daily reading allows unanswered questions", () => {
       path: testInfo.outputPath("listening-mobile.png"),
       fullPage: true,
     });
+    const beforeOfflineCheck = hintRequests;
+    await page.route(`**/api/daily/${seed.id}`, async (route) => {
+      const response = await route.fetch();
+      const lesson = await response.json();
+      lesson.capabilities.runtime = false;
+      await route.fulfill({ response, json: lesson });
+    });
+    await page.reload();
+    await page.getByRole("tab", { name: "分段听", exact: true }).click();
+    await panel
+      .getByRole("button", { name: "播放第 1 句", exact: true })
+      .click();
+    await panel
+      .getByLabel("第 1 句听写", { exact: true })
+      .fill("Welcome to the centre.");
+    await panel.getByRole("button", { name: "核对听写", exact: true }).click();
+    await expect(panel.getByLabel("第 1 句原文对照")).toBeVisible();
+    expect(hintRequests).toBe(beforeOfflineCheck);
+    await panel
+      .getByRole("button", { name: "给我重听提示", exact: true })
+      .click();
+    await expect(
+      panel.getByText("AI 服务尚未配置，文字对照可以继续使用。", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect(hintRequests).toBe(beforeOfflineCheck);
   });
 
   test("opens reading by default and scrolls the desktop panes independently", async ({

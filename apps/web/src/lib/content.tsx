@@ -1,4 +1,5 @@
 import DOMPurify from "dompurify";
+import { marked } from "marked";
 import type { StudyItem } from "../types";
 export function textOf(value: unknown): string {
   if (value == null) return "";
@@ -33,6 +34,33 @@ export function RichText({
           ALLOWED_URI_REGEXP:
             /^(?:\/(?!\/)|#|data:image\/(?:png|jpeg|webp);base64,)/i,
         }),
+      }}
+    />
+  );
+}
+
+export function MarkdownText({ text }: { text: string }) {
+  return (
+    <div
+      className="listening-markdown"
+      dangerouslySetInnerHTML={{
+        __html: DOMPurify.sanitize(
+          marked.parse(text, { async: false, breaks: true }),
+          {
+            ALLOWED_TAGS: [
+              "p",
+              "strong",
+              "em",
+              "code",
+              "ul",
+              "ol",
+              "li",
+              "br",
+              "blockquote",
+            ],
+            ALLOWED_ATTR: [],
+          },
+        ),
       }}
     />
   );
