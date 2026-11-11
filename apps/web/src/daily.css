@@ -604,3 +604,160 @@
   height: auto;
   margin: 12px 0;
 }
+
+/* Transcript and writing remain adjacent throughout deliberate listening. */
+.daily-listening {
+  max-width: 1200px;
+}
+.listening-workbench {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+.listening-workbench > section {
+  min-width: 0;
+}
+.listening-transcript-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.listening-transcript-header h3 {
+  margin-right: auto;
+}
+.listening-sentences {
+  list-style: none;
+  padding: 0;
+  max-height: 55vh;
+  overflow-y: auto;
+}
+.listening-sentences li {
+  border-left: 3px solid transparent;
+  margin: 4px 0;
+}
+.listening-sentences li.is-current {
+  border-color: #2563a6;
+  background: #eaf2fc;
+}
+.listening-sentences li > button {
+  display: flex;
+  gap: 16px;
+  width: 100%;
+  text-align: left;
+  line-height: 1.7;
+  padding: 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: 400;
+}
+.listening-sentences small {
+  display: block;
+  color: #526174;
+  font-size: 0.9em;
+}
+.listening-timestamp {
+  flex-shrink: 0;
+  font-size: 0.8em;
+  color: #526174;
+  padding-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.listening-player {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #fff;
+  border-block: 1px solid #dce3ec;
+  padding: 12px 0;
+}
+.listening-player .daily-listening-nav {
+  margin: 8px 0;
+  gap: 8px;
+}
+.listening-player label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.listening-seek {
+  display: flex;
+  gap: 12px;
+  font-size: 0.85em;
+}
+.listening-seek input {
+  flex: 1;
+  min-width: 40px;
+  accent-color: #2563a6;
+}
+.listening-shortcuts,
+.listening-save-status {
+  font-size: 0.8em;
+  color: #526174;
+  margin: 6px 0;
+}
+.listening-practice {
+  padding-top: 24px;
+}
+.listening-note-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.listening-practice textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+  padding: 14px;
+  font: inherit;
+  line-height: 1.7;
+  border: 1px solid #a8b7c9;
+  border-radius: 6px;
+}
+.listening-option {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 8px 0;
+}
+.listening-option p {
+  margin: 0;
+}
+.daily-listening button:focus-visible,
+.daily-listening input:focus-visible,
+.daily-listening textarea:focus-visible {
+  outline: 2px solid #2563a6;
+  outline-offset: 3px;
+}
+@media (max-width: 760px) {
+  .daily-listening {
+    padding: 12px;
+  }
+  .listening-workbench {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .listening-sentences {
+    max-height: 38vh;
+  }
+  .listening-shortcuts {
+    display: none;
+  }
+  .listening-seek {
+    flex-wrap: wrap;
+  }
+}
+.listening-sentences li > .listening-mark {
+  width: auto;
+  margin-left: 56px;
+  padding: 4px 10px;
+  font-size: 0.75em;
+  color: #526174;
+}
+.listening-sentences li > .listening-mark[aria-pressed="true"] {
+  color: #184f8b;
+  font-weight: 600;
+}
