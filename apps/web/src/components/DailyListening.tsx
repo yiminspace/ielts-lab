@@ -164,9 +164,16 @@ function SegmentPlayer({ item }: { item: StudyItem }) {
   useEffect(() => {
     function shortcut(event: KeyboardEvent) {
       const target = event.target as HTMLElement;
-      if (target.closest("input, textarea, select, button, [contenteditable]"))
+      if (
+        event.defaultPrevented ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        target.closest("input, textarea, select, [contenteditable]")
+      )
         return;
       if (event.code === "Space") {
+        if (target.closest("button, summary, a[href]")) return;
         event.preventDefault();
         if (playing) pause();
         else void play(false);

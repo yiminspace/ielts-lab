@@ -603,6 +603,10 @@ test.describe("Daily reading allows unanswered questions", () => {
     await page.route("**/api/items/demo-listening", async (route) => {
       const response = await route.fetch();
       const item = await response.json();
+      item.data.listenDetail = item.data.listenDetail.replace(
+        "\n",
+        "\n[00:02.50]Please listen to the next announcement.\n",
+      );
       // Exercise archive media mapping with original diagram assets.
       const question = item.data.questions[0].questionJson;
       question.questionsImgSrc = "https://archive.invalid/question.svg";
@@ -700,6 +704,29 @@ test.describe("Daily reading allows unanswered questions", () => {
     await panel
       .getByRole("button", { name: "播放第 1 句", exact: true })
       .click();
+    const firstSentence = panel.getByRole("button", {
+      name: "播放第 1 句",
+      exact: true,
+    });
+    await expect(firstSentence).toBeFocused();
+    await page.keyboard.press("ArrowRight");
+    await expect(
+      panel.getByRole("button", { name: "播放第 2 句", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("ArrowLeft");
+    await expect(firstSentence).toHaveAttribute("aria-pressed", "true");
+    await player.evaluate((node: HTMLAudioElement) => {
+      node.currentTime = 1;
+    });
+    await page.keyboard.press("r");
+    await expect
+      .poll(() => player.evaluate((node: HTMLAudioElement) => node.currentTime))
+      .toBeLessThan(1);
+    await panel.getByLabel("第 1 句听写与笔记", { exact: true }).focus();
+    await page.keyboard.press("r");
+    await expect(
+      panel.getByLabel("第 1 句听写与笔记", { exact: true }),
+    ).toHaveValue("r");
     await panel
       .getByLabel("第 1 句听写与笔记", { exact: true })
       .fill("Original sentence note");
