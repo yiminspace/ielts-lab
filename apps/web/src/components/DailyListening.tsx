@@ -3,7 +3,7 @@ import type { QuestionRow } from "../lib/questions.mjs";
 import { dictationDiff } from "../lib/dictation-diff.mjs";
 import type { DailyLesson } from "../lib/daily";
 import type { StudyItem } from "../types";
-import { mediaUrl, RichText } from "../lib/content";
+import { mediaUrl, RichText, MarkdownText } from "../lib/content";
 import { displayAnswer } from "../lib/questions.mjs";
 import { listeningSegments } from "../lib/listening-segments.mjs";
 
@@ -249,7 +249,6 @@ function SegmentPlayer({
           上一段
         </button>
         <label>
-          选择题目{" "}
           <select
             aria-label="选择听力段落"
             value={index}
@@ -306,24 +305,6 @@ function SegmentPlayer({
         }}
       />
       <div className="listening-player">
-        <label className="listening-seek">
-          播放进度
-          <input
-            type="range"
-            min={start}
-            max={end ?? duration}
-            step="0.01"
-            value={Math.min(end ?? duration, Math.max(start, currentTime))}
-            onChange={(event) => {
-              const time = Number(event.target.value);
-              if (audio.current) audio.current.currentTime = time;
-              setCurrentTime(time);
-            }}
-          />
-          <span>
-            {clock(currentTime)} / {clock(end ?? duration)}
-          </span>
-        </label>
         <div className="daily-listening-nav">
           <button onClick={() => (playing ? pause() : void play(false))}>
             {playing ? "暂停" : sentence === null ? "播放本段" : "播放当前句"}
@@ -355,23 +336,6 @@ function SegmentPlayer({
             循环播放
           </label>
           <label>
-            循环间隔
-            <select
-              aria-label="循环间隔"
-              value={gap}
-              onChange={(event) => {
-                pause();
-                setGap(Number(event.target.value));
-              }}
-            >
-              {[0, 1, 2, 3].map((seconds) => (
-                <option key={seconds} value={seconds}>
-                  {seconds} 秒
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
             语速{" "}
             <select
               aria-label="分段听语速"
@@ -390,8 +354,44 @@ function SegmentPlayer({
             </select>
           </label>
         </div>
+        <label className="listening-seek">
+          播放进度
+          <input
+            type="range"
+            min={start}
+            max={end ?? duration}
+            step="0.01"
+            value={Math.min(end ?? duration, Math.max(start, currentTime))}
+            onChange={(event) => {
+              const time = Number(event.target.value);
+              if (audio.current) audio.current.currentTime = time;
+              setCurrentTime(time);
+            }}
+          />
+          <span>
+            {clock(currentTime)} / {clock(end ?? duration)}
+          </span>
+        </label>
         <details className="listening-range">
-          <summary>局部循环</summary>
+          <summary>播放设置</summary>
+          <p className="listening-settings-heading">局部循环</p>
+          <label>
+            循环间隔
+            <select
+              aria-label="循环间隔"
+              value={gap}
+              onChange={(event) => {
+                pause();
+                setGap(Number(event.target.value));
+              }}
+            >
+              {[0, 1, 2, 3].map((seconds) => (
+                <option key={seconds} value={seconds}>
+                  {seconds} 秒
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="daily-listening-nav">
             <button
               onClick={() =>
@@ -419,16 +419,28 @@ function SegmentPlayer({
               </span>
             )}
           </div>
+          <p className="listening-shortcuts">
+            空格播放 / 暂停 · R 重听 · ← → 切句
+          </p>{" "}
         </details>
-        <p className="listening-shortcuts">
-          空格播放 / 暂停 · R 重听 · ← → 切句
-        </p>
       </div>
       {error && <p role="alert">{error}</p>}
       <div className="listening-workbench">
         <section className="daily-listening-transcript" aria-label="本段原文">
           <div className="listening-transcript-header">
             <h3>本段原文</h3>
+            <button
+              onClick={() => {
+                pause();
+                setSentence(null);
+                setExpanded(null);
+                setRange(null);
+                setCurrentTime(segment.start);
+                if (audio.current) audio.current.currentTime = segment.start;
+              }}
+            >
+              回到整段
+            </button>
             <button onClick={() => setHidden(!hidden)}>
               {hidden ? "显示原文" : "隐藏原文"}
             </button>
@@ -441,18 +453,6 @@ function SegmentPlayer({
               译文
             </label>
           </div>
-          <button
-            onClick={() => {
-              pause();
-              setSentence(null);
-              setExpanded(null);
-              setRange(null);
-              setCurrentTime(segment.start);
-              if (audio.current) audio.current.currentTime = segment.start;
-            }}
-          >
-            回到整段
-          </button>
           <ol className="listening-sentences">
             {segment.lines.map((line, i) => (
               <li
@@ -486,7 +486,6 @@ function SegmentPlayer({
                   number={i + 1}
                   expanded={expanded === i}
                   showReference={!hidden}
-                  note={notes[String(line.start)] || ""}
                   text={notes[`dictation-${line.start}`] || ""}
                   checked={notes[`checked-${line.start}`] || ""}
                   checks={(lesson.dictationChecks || []).filter(
@@ -578,6 +577,18 @@ function SegmentPlayer({
               onChange={(event) => saveNote(event.target.value)}
               placeholder="记录整段理解…"
             />
+            {segment.lines.some((line) => notes[String(line.start)]) && (
+              <details className="listening-legacy-notes">
+                <summary>以往句子笔记</summary>
+                {segment.lines
+                  .filter((line) => notes[String(line.start)])
+                  .map((line) => (
+                    <p key={line.start}>
+                      {clock(line.start)}　{notes[String(line.start)]}
+                    </p>
+                  ))}
+              </details>
+            )}
             <p role="status" className="listening-save-status">
               {saveStatus}
             </p>
@@ -652,7 +663,6 @@ function SentencePractice({
   expanded,
   showReference,
   text,
-  note,
   checked,
   checks,
   disabled,
@@ -667,7 +677,6 @@ function SentencePractice({
   expanded: boolean;
   showReference: boolean;
   text: string;
-  note: string;
   checked: string;
   checks: NonNullable<DailyLesson["dictationChecks"]>;
   disabled: boolean;
@@ -678,6 +687,10 @@ function SentencePractice({
   collapse: () => void;
 }) {
   const [submitting, setSubmitting] = useState(false);
+  const [hintOpen, setHintOpen] = useState(false);
+  useEffect(() => {
+    if (!expanded) setHintOpen(false);
+  }, [expanded]);
   const [error, setError] = useState("");
   let snapshot: { text: string; reference: string } | null = null;
   try {
@@ -689,23 +702,28 @@ function SentencePractice({
   const comparison =
     snapshot?.reference === line.text ? snapshot.text : latest?.text;
   const id = `sentence-${line.start}`;
-  async function verify() {
-    if (!text.trim() || submitting) return;
+  function verify() {
+    if (!text.trim()) return;
+    setError("");
+    setHintOpen(false);
     save(
       `checked-${line.start}`,
       JSON.stringify({ text, reference: line.text }),
     );
+  }
+  async function requestHint() {
+    if (!text.trim() || submitting || disabled || comparison !== text) return;
     if (!available) {
-      setError("AI 服务尚未配置，可先查看文字对照并记录笔记。");
+      setError("AI 服务尚未配置，文字对照可以继续使用。");
       return;
     }
     setSubmitting(true);
+    setHintOpen(true);
     setError("");
     try {
-      if (!(await check(text)))
-        setError("AI 核对提交失败，听写已保留，可再次核对。");
+      if (!(await check(text))) setError("重听提示提交失败，可以重试。");
     } catch {
-      setError("AI 暂不可用，听写已保留，可再次核对。");
+      setError("AI 暂不可用，可以重试重听提示。");
     } finally {
       setSubmitting(false);
     }
@@ -714,9 +732,8 @@ function SentencePractice({
     return (
       <div className="listening-sentence-preview">
         {text && <p>我的听写　{text}</p>}
-        {note && <p>笔记　{note}</p>}
-        {latest?.feedback && <p>AI 笔记　{latest.feedback.feedback_zh}</p>}
-        {!text && !note && !latest && <p>点击句子，添加听写或笔记</p>}
+        {latest?.feedback && <small>已有重听提示</small>}
+        {!text && !latest && <p>点击句子开始听写</p>}
       </div>
     );
   return (
@@ -733,15 +750,19 @@ function SentencePractice({
         placeholder="写下听到的内容…"
       />
       <div className="listening-check-actions">
+        <button disabled={!text.trim()} onClick={verify}>
+          核对听写
+        </button>
         <button
-          disabled={!text.trim() || disabled || submitting}
-          onClick={() => void verify()}
+          disabled={
+            !text.trim() || comparison !== text || disabled || submitting
+          }
+          onClick={() => void requestHint()}
         >
           {submitting || latest?.status === "pending"
-            ? "AI 核对中…"
-            : "核对听写"}
+            ? "正在生成提示…"
+            : "给我重听提示"}
         </button>
-        <small>核对后生成 AI 笔记</small>
         <button onClick={collapse}>收起本句</button>
       </div>
       {showReference && typeof comparison === "string" && comparison.trim() && (
@@ -766,58 +787,73 @@ function SentencePractice({
         </div>
       )}
       {error && <p role="alert">{error}</p>}
-      {latest?.status === "failed" && (
-        <p role="alert">AI 笔记生成失败，已保留本次听写，可重新核对。</p>
-      )}
       {checks.length > 0 && (
-        <div
+        <details
           className="listening-ai-notes"
-          aria-label={`第 ${number} 句 AI 笔记`}
+          aria-label={`第 ${number} 句重听提示`}
+          open={hintOpen}
+          onToggle={(event) => setHintOpen(event.currentTarget.open)}
         >
-          <strong>AI 笔记</strong>
+          <summary>重听提示</summary>
+          {latest?.text !== text && <small>这条提示对应上次提交的听写。</small>}
+          {latest?.status === "failed" && (
+            <p role="alert">重听提示生成失败，可以再次请求。</p>
+          )}
           {latest?.feedback ? (
-            <>
-              <p>{latest.feedback.feedback_zh}</p>
-              <p>{latest.feedback.practice_zh}</p>
-            </>
+            <FeedbackNote
+              text={`${latest.feedback.feedback_zh}\n\n${latest.feedback.practice_zh}`}
+            />
           ) : (
             <p role="status">
               {latest?.status === "pending"
-                ? "正在生成本次反馈…"
-                : "本次反馈尚未生成。"}
+                ? "正在生成重听提示…"
+                : "本次提示尚未生成。"}
             </p>
           )}
           {checks.length > 1 && (
             <details>
-              <summary>历史核对（{checks.length - 1}）</summary>
+              <summary>历史提示（{checks.length - 1}）</summary>
               {checks
                 .slice(0, -1)
                 .reverse()
                 .map((entry) => (
                   <article key={entry.id}>
                     <p>听写　{entry.text}</p>
-                    <p>
-                      {entry.feedback?.feedback_zh ||
-                        (entry.status === "failed" ? "生成失败" : "尚未生成")}
-                    </p>
-                    {entry.feedback && <p>{entry.feedback.practice_zh}</p>}
+                    {entry.feedback ? (
+                      <FeedbackNote
+                        text={`${entry.feedback.feedback_zh}\n\n${entry.feedback.practice_zh}`}
+                      />
+                    ) : (
+                      <p>
+                        {entry.status === "failed" ? "生成失败" : "尚未生成"}
+                      </p>
+                    )}
                   </article>
                 ))}
             </details>
           )}
-        </div>
+        </details>
       )}
-      <label htmlFor={`${id}-note`}>我的笔记</label>
-      <textarea
-        id={`${id}-note`}
-        aria-label={`第 ${number} 句笔记`}
-        value={note}
-        onChange={(event) => save(String(line.start), event.target.value)}
-        placeholder="补充自己的理解或重听提醒…"
-      />
       <small role="status" className="listening-save-status">
         {saveStatus}
       </small>
+    </div>
+  );
+}
+
+function FeedbackNote({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const lengthy = text.length > 160 || text.split("\n").length > 3;
+  return (
+    <div className="listening-feedback">
+      <div className={lengthy && !expanded ? "listening-feedback-summary" : ""}>
+        <MarkdownText text={text} />
+      </div>
+      {lengthy && (
+        <button aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
+          {expanded ? "收起反馈" : "展开完整反馈"}
+        </button>
+      )}
     </div>
   );
 }

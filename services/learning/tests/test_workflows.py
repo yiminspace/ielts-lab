@@ -619,7 +619,7 @@ async def test_dictation_feedback_uses_own_workflow_and_checkpoint():
         def __init__(self):
             self.calls = []
 
-        async def generate(self, schema, instructions, payload):
+        async def generate(self, schema, instructions, payload, validate=None):
             self.calls.append((schema, instructions, payload))
             return DictationFeedback(
                 feedback_zh="漏写了 a。", practice_zh="重听 bring a notebook。"
@@ -639,6 +639,9 @@ async def test_dictation_feedback_uses_own_workflow_and_checkpoint():
     assert payload["text"] == value.text
     assert "text only" in instructions
     assert "untrusted quoted data" in instructions
+    assert "ONE short Chinese sentence" in instructions
+    assert "no Markdown" in instructions
+    assert payload["prompt_version"] == "dictation-2026-11-11.2"
     with pytest.raises(ValidationError):
         DictationInput(reference="Example.", text=" ")
     with pytest.raises(ValidationError):

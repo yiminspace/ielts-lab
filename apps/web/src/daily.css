@@ -1164,3 +1164,343 @@
     max-height: 68dvh;
   }
 }
+
+/* Give the transcript the viewport, keep secondary playback controls in a popover. */
+.listening-range {
+  position: relative;
+}
+.listening-range > summary {
+  list-style: none;
+  cursor: pointer;
+}
+.listening-range > summary::-webkit-details-marker {
+  display: none;
+}
+.listening-range[open] {
+  background: var(--vg-color-surface, white);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  box-shadow: 0 5px 18px #00000012;
+}
+.listening-range .listening-settings-heading {
+  font-size: 12px;
+  margin: 10px 0 6px;
+  color: var(--muted);
+}
+.listening-range .listening-shortcuts {
+  display: block;
+  margin: 10px 0 0;
+}
+.listening-markdown {
+  overflow-wrap: anywhere;
+}
+.listening-markdown p {
+  margin: 3px 0;
+}
+.listening-markdown ul,
+.listening-markdown ol {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+.listening-markdown code {
+  font-size: 0.95em;
+  background: var(--panel);
+  padding: 1px 3px;
+}
+.listening-feedback-summary {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.listening-feedback > button {
+  margin-top: 4px;
+}
+.listening-sentence-preview .listening-markdown {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.listening-sentence-editor {
+  padding: 0 12px 8px 42px;
+}
+.listening-sentence-editor > label {
+  margin: 4px 0;
+}
+.listening-sentence-editor textarea {
+  min-height: 56px;
+  height: 64px;
+}
+.listening-diff,
+.listening-ai-notes {
+  margin: 8px 0;
+}
+.listening-ai-notes {
+  padding-top: 6px;
+}
+.listening-ai-notes > strong {
+  font-size: 12px;
+  color: var(--muted);
+}
+@media (min-width: 761px) {
+  .main-shell:has(.daily-listening-mode) .topbar {
+    display: none;
+  }
+  .main-shell:has(.daily-listening-mode) .page-main {
+    height: 100dvh;
+    padding: 10px 20px;
+  }
+  .daily-listening-mode .page-heading h1 {
+    font-size: 16px;
+    line-height: 28px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .daily-listening-mode .page-heading p {
+    display: none;
+  }
+  .daily-listening-mode .daily-tabs {
+    margin: 0;
+  }
+  .daily-listening-mode .daily-tabs button {
+    font-size: 12px;
+    padding: 6px 2px;
+    min-height: 32px;
+  }
+  .daily-listening-mode .daily-listening {
+    padding-top: 4px;
+  }
+  .daily-listening-mode .listening-segment-nav {
+    padding-bottom: 4px;
+  }
+  .daily-listening-mode .listening-segment-nav h2 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .daily-listening-mode .listening-segment-meta {
+    font-size: 11px;
+  }
+  .daily-listening-mode .listening-player {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 0;
+    position: relative;
+  }
+  .daily-listening-mode .listening-player > .daily-listening-nav {
+    order: 0;
+    flex-wrap: nowrap;
+    margin: 0;
+    gap: 5px;
+  }
+  .daily-listening-mode .listening-player > .listening-seek {
+    order: 1;
+    flex: 1;
+    min-width: 130px;
+    margin: 0;
+    font-size: 0;
+    gap: 8px;
+  }
+  .daily-listening-mode .listening-seek span {
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .daily-listening-mode .listening-range {
+    order: 2;
+    flex-shrink: 0;
+    margin: 0;
+  }
+  .daily-listening-mode .listening-range > summary {
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+  .daily-listening-mode .listening-range[open] {
+    position: absolute;
+    right: 0;
+    top: 4px;
+    width: 300px;
+    z-index: 5;
+  }
+  .daily-listening-mode .listening-range[open] > summary {
+    font-weight: 600;
+    padding: 0 0 6px;
+  }
+  .daily-listening-mode .listening-range .daily-listening-nav {
+    flex-wrap: wrap;
+  }
+  .daily-listening-mode .listening-workbench {
+    padding-top: 6px;
+  }
+  .daily-listening-mode .listening-transcript-header {
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .daily-listening-mode .listening-transcript-header h3 {
+    margin: 0 auto 0 0;
+  }
+  .daily-listening-mode .listening-transcript-header label {
+    display: flex;
+    align-items: center;
+  }
+  .daily-listening-mode .listening-sentences {
+    margin-top: 0;
+  }
+  .daily-listening-mode .listening-sentence-editor button {
+    min-height: 28px;
+    padding: 4px 8px;
+  }
+  .daily-listening-mode .listening-ai-notes p {
+    font-size: 13px;
+  }
+}
+@media (min-width: 1100px) {
+  .daily-listening-mode .page-heading {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 30%;
+    padding: 0;
+    margin: 0;
+  }
+  .daily-listening-mode .daily-tabs {
+    padding-left: 32%;
+    padding-right: 100px;
+    min-height: 36px;
+    gap: 18px;
+  }
+  .daily-listening-mode .daily-back {
+    top: 8px;
+  }
+}
+@media (min-width: 761px) and (max-width: 1099px) {
+  .daily-listening-mode .listening-player {
+    flex-wrap: wrap;
+  }
+  .daily-listening-mode .listening-player > .listening-seek {
+    flex-basis: 100%;
+    order: 3;
+  }
+}
+@media (max-width: 760px) {
+  .daily-listening-mode .page-heading {
+    margin: 0;
+  }
+  .daily-listening-mode .page-heading h1 {
+    font-size: 16px;
+  }
+  .daily-listening-mode .page-heading p {
+    display: none;
+  }
+  .daily-listening-mode .listening-segment-nav h2 {
+    display: none;
+  }
+  .daily-listening-mode .listening-transcript-header h3 {
+    font-size: 14px;
+    margin: 0 auto 0 0;
+  }
+  .daily-listening-mode .listening-transcript-header button {
+    padding: 5px;
+    min-height: 32px;
+    font-size: 12px;
+  }
+  .listening-sentence-editor {
+    padding-left: 12px;
+  }
+}
+@media (max-width: 760px) {
+  .daily-listening-mode {
+    position: relative;
+  }
+  .daily-listening-mode .daily-back {
+    position: absolute;
+    right: 0;
+    top: 0;
+    margin: 0;
+    font-size: 11px;
+  }
+  .daily-listening-mode .page-heading {
+    padding-right: 100px;
+  }
+  .daily-listening-mode .page-heading h1 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .daily-listening-mode .daily-tabs {
+    margin-top: 4px;
+  }
+  .daily-listening-mode .daily-listening {
+    padding: 6px 0;
+  }
+  .daily-listening-mode .listening-segment-nav {
+    margin: 4px 0;
+  }
+  .daily-listening-mode .listening-segment-meta {
+    font-size: 10px;
+  }
+  .daily-listening-mode .listening-player {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 0;
+  }
+  .daily-listening-mode .listening-player > .listening-seek {
+    order: 0;
+    width: 100%;
+    margin: 0;
+    font-size: 0;
+  }
+  .daily-listening-mode .listening-seek span {
+    font-size: 11px;
+  }
+  .daily-listening-mode .listening-player > .daily-listening-nav {
+    order: 1;
+    gap: 5px;
+    margin: 0;
+    width: 100%;
+  }
+  .daily-listening-mode .listening-player > .listening-range {
+    order: 2;
+    align-self: stretch;
+    margin: 0;
+  }
+  .daily-listening-mode .listening-player button,
+  .daily-listening-mode .listening-player select {
+    min-height: 36px;
+    padding: 5px 8px;
+    font-size: 12px;
+  }
+  .daily-listening-mode .listening-player label {
+    font-size: 12px;
+  }
+  .daily-listening-mode .listening-range > summary {
+    padding: 5px 0;
+    font-size: 12px;
+  }
+  .daily-listening-mode .listening-transcript-header {
+    margin-top: 10px;
+    gap: 6px;
+  }
+  .daily-listening-mode .listening-transcript-header h3 {
+    flex-basis: 100%;
+  }
+}
+.daily-listening-mode .page-heading > div {
+  min-width: 0;
+  flex: 1;
+}
+.daily-listening-mode .daily-working {
+  display: none;
+}
+.listening-ai-notes > summary {
+  padding: 4px 0;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
