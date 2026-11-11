@@ -585,6 +585,131 @@ test.describe("Daily reading allows unanswered questions", () => {
     await fixture?.stop();
   });
 
+  test("segments original listening answers and stops at the next answer boundary", async ({
+    page,
+    context,
+  }) => {
+    await login(context, fixture);
+    const seed = await fixture.app.daily.ensure(
+      fixture.hosted ? owner : "00000000-0000-4000-8000-000000000001",
+      {
+        id: crypto.randomUUID(),
+        itemId: "demo-listening",
+        kind: "listening",
+        answers: {},
+        createdAt: new Date().toISOString(),
+      },
+    );
+    await page.route("**/api/items/demo-listening", async (route) => {
+      const response = await route.fetch();
+      const item = await response.json();
+      // Exercise archive media mapping with original diagram assets.
+      const question = item.data.questions[0].questionJson;
+      question.questionsImgSrc = "https://archive.invalid/question.svg";
+      question.optionsImgSrc = "https://archive.invalid/options.svg";
+      item.localMedia[question.questionsImgSrc] =
+        "/media/original-segment-question.svg";
+      item.localMedia[question.optionsImgSrc] =
+        "/media/original-segment-options.svg";
+      await route.fulfill({ response, json: item });
+    });
+    await page.route("**/media/original-segment-*.svg", (route) =>
+      route.fulfill({
+        contentType: "image/svg+xml",
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="900" height="200"><rect width="900" height="200" fill="white"/><text x="20" y="40">Original learning centre: A Reception, B Library</text></svg>',
+      }),
+    );
+    await page.goto(`/#/daily/${seed.id}`);
+    await page.getByRole("tab", { name: "分段听", exact: true }).click();
+    const panel = page.getByRole("tabpanel", { name: "分段听", exact: true });
+    await expect(
+      panel.getByRole("heading", { name: "第 1 题", exact: true }),
+    ).toBeVisible();
+    for (const name of ["题目图示", "匹配选项图"]) {
+      const diagram = panel.getByRole("img", { name, exact: true });
+      await expect(diagram).toBeVisible();
+      await expect
+        .poll(() =>
+          diagram.evaluate((node: HTMLImageElement) => node.naturalWidth),
+        )
+        .toBe(900);
+      await expect(diagram).toHaveAttribute(
+        "src",
+        /^\/media\/original-segment-/,
+      );
+    }
+    const player = panel.locator("audio");
+    await expect
+      .poll(() => player.evaluate((node: HTMLAudioElement) => node.readyState))
+      .toBeGreaterThanOrEqual(1);
+    await expect(
+      panel
+        .getByText("Welcome to the Riverside learning centre.", {
+          exact: false,
+        })
+        .first(),
+    ).not.toBeVisible();
+    await panel.getByText("查看本段原文", { exact: true }).click();
+    await expect(panel.locator(".daily-listening-transcript")).toContainText(
+      "Monday",
+    );
+    await expect(
+      panel.locator(".daily-listening-transcript"),
+    ).not.toContainText("twenty pounds");
+    await panel.getByRole("button", { name: "播放本段", exact: true }).click();
+    await expect
+      .poll(() => player.evaluate((node: HTMLAudioElement) => node.paused))
+      .toBe(false);
+    await player.evaluate((node: HTMLAudioElement) => {
+      node.currentTime = 5.1;
+    });
+    await expect
+      .poll(() => player.evaluate((node: HTMLAudioElement) => node.paused))
+      .toBe(true);
+    expect(
+      await player.evaluate((node: HTMLAudioElement) => node.currentTime),
+    ).toBeCloseTo(5.14, 1);
+    await panel.getByRole("button", { name: "下一段", exact: true }).click();
+    await expect(
+      panel.getByRole("heading", { name: "第 2 题", exact: true }),
+    ).toBeVisible();
+    await expect(
+      panel.locator(".daily-listening-transcript[open]"),
+    ).toHaveCount(0);
+    expect(
+      await player.evaluate((node: HTMLAudioElement) => node.currentTime),
+    ).toBeCloseTo(5.14, 1);
+    await panel.getByLabel("分段听语速").selectOption("0.75");
+    await panel.getByRole("button", { name: "重听本段", exact: true }).click();
+    expect(
+      await player.evaluate((node: HTMLAudioElement) => node.playbackRate),
+    ).toBe(0.75);
+    await panel.getByLabel("选择听力段落").selectOption("3");
+    await expect(
+      panel.getByRole("heading", { name: "第 4 题", exact: true }),
+    ).toBeVisible();
+    await expect(
+      panel.getByRole("button", { name: "下一段", exact: true }),
+    ).toBeDisabled();
+    expect(await player.evaluate((node: HTMLAudioElement) => node.paused)).toBe(
+      true,
+    );
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(
+      await panel.evaluate((node) => node.scrollWidth <= node.clientWidth),
+    ).toBe(true);
+    await page.getByRole("tab", { name: "阅读理解", exact: true }).click();
+    await expect(player).toHaveCount(0);
+    await page.route("**/api/items/demo-listening", async (route) => {
+      const response = await route.fetch();
+      const item = await response.json();
+      item.data.listenDetail = "";
+      await route.fulfill({ response, json: item });
+    });
+    await page.getByRole("tab", { name: "分段听", exact: true }).click();
+    await expect(panel).toContainText("暂时无法分段");
+  });
+
   test("opens reading by default and scrolls the desktop panes independently", async ({
     page,
     context,

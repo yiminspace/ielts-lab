@@ -572,3 +572,35 @@
     min-height: 44px;
   }
 }
+
+.daily-listening {
+  max-width: 850px;
+  margin: 0 auto;
+  padding: 20px;
+}
+.daily-listening-nav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 16px 0;
+}
+.daily-listening-nav button,
+.daily-listening-nav select {
+  min-height: 44px;
+}
+.daily-listening article,
+.daily-listening-transcript {
+  margin-top: 20px;
+}
+.daily-listening details summary {
+  cursor: pointer;
+  padding: 12px 0;
+}
+
+.daily-listening-diagram {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 12px 0;
+}
