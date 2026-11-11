@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { QuestionRow } from "../lib/questions.mjs";
+import { dictationDiff } from "../lib/dictation-diff.mjs";
+import type { DailyLesson } from "../lib/daily";
 import type { StudyItem } from "../types";
 import { mediaUrl, RichText } from "../lib/content";
 import { displayAnswer } from "../lib/questions.mjs";
@@ -7,7 +10,18 @@ import { listeningSegments } from "../lib/listening-segments.mjs";
 const clock = (seconds: number) =>
   `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 
-export default function DailyListening({ itemId }: { itemId: string }) {
+type ListeningProps = {
+  itemId: string;
+  lesson: DailyLesson;
+  disabled: boolean;
+  send: (action: string, body: Record<string, unknown>) => Promise<boolean>;
+};
+export default function DailyListening({
+  itemId,
+  lesson,
+  disabled,
+  send,
+}: ListeningProps) {
   const [item, setItem] = useState<StudyItem | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -30,10 +44,23 @@ export default function DailyListening({ itemId }: { itemId: string }) {
   }, [itemId]);
   if (error) return <p role="alert">{error}</p>;
   if (!item) return <p role="status">正在加载听力材料…</p>;
-  return <SegmentPlayer key={item.id} item={item} />;
+  return (
+    <SegmentPlayer
+      key={item.id}
+      item={item}
+      lesson={lesson}
+      disabled={disabled}
+      send={send}
+    />
+  );
 }
 
-function SegmentPlayer({ item }: { item: StudyItem }) {
+function SegmentPlayer({
+  item,
+  lesson,
+  disabled,
+  send,
+}: { item: StudyItem } & Omit<ListeningProps, "itemId">) {
   const audio = useRef<HTMLAudioElement>(null);
   const repeatTimer = useRef<number | undefined>(undefined);
   const [gap, setGap] = useState(0);
@@ -43,6 +70,7 @@ function SegmentPlayer({ item }: { item: StudyItem }) {
   const [playing, setPlaying] = useState(false);
   const [error, setError] = useState("");
   const [sentence, setSentence] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState<number | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [range, setRange] = useState<{ start: number; end?: number } | null>(
     null,
@@ -56,7 +84,12 @@ function SegmentPlayer({ item }: { item: StudyItem }) {
         localStorage.getItem(`ielts-listening:${item.id}`) || "{}",
       );
       return value && typeof value === "object" && !Array.isArray(value)
-        ? value
+        ? Object.fromEntries(
+            Object.entries(value).filter(
+              (entry): entry is [string, string] =>
+                typeof entry[1] === "string",
+            ),
+          )
         : {};
     } catch {
       return {};
@@ -76,11 +109,9 @@ function SegmentPlayer({ item }: { item: StudyItem }) {
     (activeLine
       ? Math.min(activeLine.end, segment.end ?? (duration || activeLine.end))
       : segment?.end);
-  const noteKey = activeLine
-    ? String(activeLine.start)
-    : `segment-${segment?.start}`;
-  function saveNote(value: string) {
-    const next = { ...notes, [noteKey]: value };
+  const noteKey = `segment-${segment?.start}`;
+  function saveNote(value: string, key = noteKey) {
+    const next = { ...notes, [key]: value };
     setNotes(next);
     try {
       localStorage.setItem(`ielts-listening:${item.id}`, JSON.stringify(next));
@@ -150,6 +181,7 @@ function SegmentPlayer({ item }: { item: StudyItem }) {
     setRange(null);
     setIndex(next);
     setSentence(null);
+    setExpanded(null);
     setCurrentTime(segments[next].start);
     setError("");
     if (audio.current) audio.current.currentTime = segments[next].start;
@@ -158,6 +190,7 @@ function SegmentPlayer({ item }: { item: StudyItem }) {
     pause();
     setRange(null);
     setSentence(next);
+    setExpanded(next);
     setCurrentTime(segment.lines[next].start);
     void play(true, segment.lines[next].start);
   }
@@ -210,7 +243,8 @@ function SegmentPlayer({ item }: { item: StudyItem }) {
     .join("、");
   return (
     <div className="daily-listening">
-      <div className="daily-listening-nav">
+      <div className="daily-listening-nav listening-segment-nav">
+        <h2>第 {label} 题</h2>
         <button disabled={index === 0} onClick={() => select(index - 1)}>
           上一段
         </button>
@@ -242,13 +276,12 @@ function SegmentPlayer({ item }: { item: StudyItem }) {
         >
           下一段
         </button>
+        <p className="listening-segment-meta">
+          {clock(segment.start)} →{" "}
+          {segment.end === null ? "音频结束" : clock(segment.end)} · 第{" "}
+          {index + 1} / {segments.length} 段
+        </p>
       </div>
-      <h2>第 {label} 题</h2>
-      <p>
-        {clock(segment.start)} →{" "}
-        {segment.end === null ? "音频结束" : clock(segment.end)} · 第{" "}
-        {index + 1} / {segments.length} 段
-      </p>
       <audio
         ref={audio}
         src={src}
@@ -412,6 +445,7 @@ function SegmentPlayer({ item }: { item: StudyItem }) {
             onClick={() => {
               pause();
               setSentence(null);
+              setExpanded(null);
               setRange(null);
               setCurrentTime(segment.start);
               if (audio.current) audio.current.currentTime = segment.start;
@@ -447,6 +481,28 @@ function SegmentPlayer({ item }: { item: StudyItem }) {
                     )}
                   </span>
                 </button>
+                <SentencePractice
+                  line={line}
+                  number={i + 1}
+                  expanded={expanded === i}
+                  showReference={!hidden}
+                  note={notes[String(line.start)] || ""}
+                  text={notes[`dictation-${line.start}`] || ""}
+                  checked={notes[`checked-${line.start}`] || ""}
+                  checks={(lesson.dictationChecks || []).filter(
+                    (entry) =>
+                      entry.start === line.start &&
+                      entry.reference === line.text,
+                  )}
+                  disabled={disabled}
+                  saveStatus={saveStatus}
+                  available={lesson.capabilities?.runtime !== false}
+                  save={(key, value) => saveNote(value, key)}
+                  check={(text) =>
+                    send("dictation", { start: line.start, text })
+                  }
+                  collapse={() => setExpanded(null)}
+                />
                 <button
                   className="listening-mark"
                   aria-pressed={notes[`mark-${line.start}`] === "yes"}
@@ -476,18 +532,6 @@ function SegmentPlayer({ item }: { item: StudyItem }) {
           </ol>
         </section>
         <section className="listening-practice" aria-label="听写与题目">
-          <label className="listening-note-label" htmlFor="listening-note">
-            {sentence === null ? "本段笔记" : `第 ${sentence + 1} 句听写与笔记`}
-          </label>
-          <textarea
-            id="listening-note"
-            value={typeof notes[noteKey] === "string" ? notes[noteKey] : ""}
-            onChange={(event) => saveNote(event.target.value)}
-            placeholder="写下听到的内容、没听懂的词或自己的理解…"
-          />
-          <p role="status" className="listening-save-status">
-            {saveStatus}
-          </p>
           <details className="listening-questions" open>
             <summary>本段题目</summary>
             <div key={index}>
@@ -510,11 +554,13 @@ function SegmentPlayer({ item }: { item: StudyItem }) {
                   )}
                   <RichText html={group.content} />
                   <RichText html={row.content} />
-                  {row.options.map((option) => (
-                    <div className="listening-option" key={option.value}>
-                      {option.label}. <RichText html={option.content} />
-                    </div>
-                  ))}
+                  {row.options.length > 0 && (
+                    <ListeningChoices
+                      row={row}
+                      value={notes[`answer-${row.id}`]}
+                      onChange={(value) => saveNote(value, `answer-${row.id}`)}
+                    />
+                  )}
                   <details>
                     <summary>查看第 {row.number} 题答案</summary>
                     <p>{displayAnswer(row)}</p>
@@ -523,8 +569,255 @@ function SegmentPlayer({ item }: { item: StudyItem }) {
               ))}
             </div>
           </details>
+          <details className="listening-segment-notes">
+            <summary>整段笔记</summary>
+            <label htmlFor="listening-note">本段笔记</label>
+            <textarea
+              id="listening-note"
+              value={typeof notes[noteKey] === "string" ? notes[noteKey] : ""}
+              onChange={(event) => saveNote(event.target.value)}
+              placeholder="记录整段理解…"
+            />
+            <p role="status" className="listening-save-status">
+              {saveStatus}
+            </p>
+          </details>
         </section>
       </div>
+    </div>
+  );
+}
+
+function ListeningChoices({
+  row,
+  value,
+  onChange,
+}: {
+  row: QuestionRow;
+  value?: string;
+  onChange: (value: string) => void;
+}) {
+  let selected: string[] = [];
+  try {
+    const saved = JSON.parse(value || "[]");
+    if (Array.isArray(saved))
+      selected = saved.filter((option) => typeof option === "string");
+  } catch {
+    /* A damaged local answer can be selected again. */
+  }
+  const multiple = row.type === "2";
+  return (
+    <fieldset className="listening-choices">
+      <legend>
+        {multiple
+          ? `选择 ${row.weight} 项 · 已选 ${selected.length} 项`
+          : "选择一项"}
+      </legend>
+      {row.options.map((option) => {
+        const checked = selected.includes(option.value);
+        return (
+          <label
+            className={`listening-option ${checked ? "is-selected" : ""}`}
+            key={option.value}
+          >
+            <input
+              type={multiple ? "checkbox" : "radio"}
+              name={`listening-${row.id}`}
+              checked={checked}
+              disabled={multiple && !checked && selected.length >= row.weight}
+              onChange={() =>
+                onChange(
+                  JSON.stringify(
+                    multiple
+                      ? checked
+                        ? selected.filter((value) => value !== option.value)
+                        : [...selected, option.value]
+                      : [option.value],
+                  ),
+                )
+              }
+            />
+            <span>{option.label}.</span>
+            <RichText html={option.content} />
+          </label>
+        );
+      })}
+    </fieldset>
+  );
+}
+
+function SentencePractice({
+  line,
+  number,
+  expanded,
+  showReference,
+  text,
+  note,
+  checked,
+  checks,
+  disabled,
+  available,
+  saveStatus,
+  save,
+  check,
+  collapse,
+}: {
+  line: { start: number; text: string };
+  number: number;
+  expanded: boolean;
+  showReference: boolean;
+  text: string;
+  note: string;
+  checked: string;
+  checks: NonNullable<DailyLesson["dictationChecks"]>;
+  disabled: boolean;
+  available: boolean;
+  saveStatus: string;
+  save: (key: string, value: string) => void;
+  check: (text: string) => Promise<boolean>;
+  collapse: () => void;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  let snapshot: { text: string; reference: string } | null = null;
+  try {
+    snapshot = JSON.parse(checked || "null");
+  } catch {
+    /* Keep legacy notes readable. */
+  }
+  const latest = checks.at(-1);
+  const comparison =
+    snapshot?.reference === line.text ? snapshot.text : latest?.text;
+  const id = `sentence-${line.start}`;
+  async function verify() {
+    if (!text.trim() || submitting) return;
+    save(
+      `checked-${line.start}`,
+      JSON.stringify({ text, reference: line.text }),
+    );
+    if (!available) {
+      setError("AI 服务尚未配置，可先查看文字对照并记录笔记。");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    try {
+      if (!(await check(text)))
+        setError("AI 核对提交失败，听写已保留，可再次核对。");
+    } catch {
+      setError("AI 暂不可用，听写已保留，可再次核对。");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+  if (!expanded)
+    return (
+      <div className="listening-sentence-preview">
+        {text && <p>我的听写　{text}</p>}
+        {note && <p>笔记　{note}</p>}
+        {latest?.feedback && <p>AI 笔记　{latest.feedback.feedback_zh}</p>}
+        {!text && !note && !latest && <p>点击句子，添加听写或笔记</p>}
+      </div>
+    );
+  return (
+    <div className="listening-sentence-editor">
+      <label htmlFor={`${id}-dictation`}>我的听写</label>
+      <textarea
+        id={`${id}-dictation`}
+        aria-label={`第 ${number} 句听写`}
+        maxLength={6000}
+        value={text}
+        onChange={(event) =>
+          save(`dictation-${line.start}`, event.target.value)
+        }
+        placeholder="写下听到的内容…"
+      />
+      <div className="listening-check-actions">
+        <button
+          disabled={!text.trim() || disabled || submitting}
+          onClick={() => void verify()}
+        >
+          {submitting || latest?.status === "pending"
+            ? "AI 核对中…"
+            : "核对听写"}
+        </button>
+        <small>核对后生成 AI 笔记</small>
+        <button onClick={collapse}>收起本句</button>
+      </div>
+      {showReference && typeof comparison === "string" && comparison.trim() && (
+        <div className="listening-diff" aria-label={`第 ${number} 句原文对照`}>
+          <p>
+            原文对照 <small>绿色为漏词，删除线为多写或替换</small>
+          </p>
+          {comparison !== text && (
+            <small>当前听写已修改，下面是上次核对。</small>
+          )}
+          <div>
+            {dictationDiff(line.text, comparison).map((part, index) =>
+              part.type === "missing" ? (
+                <ins key={index}>{part.text} </ins>
+              ) : part.type === "extra" ? (
+                <del key={index}>{part.text} </del>
+              ) : (
+                <span key={index}>{part.text} </span>
+              ),
+            )}
+          </div>
+        </div>
+      )}
+      {error && <p role="alert">{error}</p>}
+      {latest?.status === "failed" && (
+        <p role="alert">AI 笔记生成失败，已保留本次听写，可重新核对。</p>
+      )}
+      {checks.length > 0 && (
+        <div
+          className="listening-ai-notes"
+          aria-label={`第 ${number} 句 AI 笔记`}
+        >
+          <strong>AI 笔记</strong>
+          {latest?.feedback ? (
+            <>
+              <p>{latest.feedback.feedback_zh}</p>
+              <p>{latest.feedback.practice_zh}</p>
+            </>
+          ) : (
+            <p role="status">
+              {latest?.status === "pending"
+                ? "正在生成本次反馈…"
+                : "本次反馈尚未生成。"}
+            </p>
+          )}
+          {checks.length > 1 && (
+            <details>
+              <summary>历史核对（{checks.length - 1}）</summary>
+              {checks
+                .slice(0, -1)
+                .reverse()
+                .map((entry) => (
+                  <article key={entry.id}>
+                    <p>听写　{entry.text}</p>
+                    <p>
+                      {entry.feedback?.feedback_zh ||
+                        (entry.status === "failed" ? "生成失败" : "尚未生成")}
+                    </p>
+                    {entry.feedback && <p>{entry.feedback.practice_zh}</p>}
+                  </article>
+                ))}
+            </details>
+          )}
+        </div>
+      )}
+      <label htmlFor={`${id}-note`}>我的笔记</label>
+      <textarea
+        id={`${id}-note`}
+        aria-label={`第 ${number} 句笔记`}
+        value={note}
+        onChange={(event) => save(String(line.start), event.target.value)}
+        placeholder="补充自己的理解或重听提醒…"
+      />
+      <small role="status" className="listening-save-status">
+        {saveStatus}
+      </small>
     </div>
   );
 }

@@ -119,6 +119,15 @@ export interface DailyLesson {
       createdAt: string;
     }[];
   };
+  dictationChecks?: {
+    id: string;
+    start: number;
+    reference: string;
+    text: string;
+    status: "pending" | "completed" | "failed";
+    feedback: { feedback_zh: string; practice_zh: string } | null;
+    createdAt: string;
+  }[];
   expressionHelp?: { english?: string; clarification_zh?: string };
   pending?: { kind: string; requestId: string; state: string } | null;
   error?: string | { message?: string; code?: string } | null;

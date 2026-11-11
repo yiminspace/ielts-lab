@@ -773,6 +773,7 @@ export function createDaily({
             conversation: "ielts.conversation",
             expression: "ielts.expression",
             writing: "ielts.writing",
+            dictation: "ielts.dictation",
           }[pending.kind],
           version: "1",
           idempotency_key: idempotencyKey,
@@ -791,6 +792,10 @@ export function createDaily({
             );
             if (submitted) submitted.status = "failed";
           }
+          const check = value.dictationChecks?.find(
+            (entry) => entry.id === key,
+          );
+          if (check) check.status = "failed";
           value.error = "AI 任务未完成，可重试；已保存的练习已保留";
           value.failedJob = value.pending;
           value.pending = null;
@@ -818,6 +823,24 @@ export function createDaily({
             translation: value.content.conversation.opening_zh,
             createdAt: stamp(),
           });
+        } else if (pending.kind === "dictation") {
+          if (
+            !object(output) ||
+            !safeText(output.feedback_zh, 3000) ||
+            !output.feedback_zh.trim() ||
+            !safeText(output.practice_zh, 1500) ||
+            !output.practice_zh.trim()
+          )
+            throw failure(502, "听写反馈格式无效，请重试");
+          const check = value.dictationChecks?.find(
+            (entry) => entry.id === key,
+          );
+          if (!check) throw failure(502, "听写核对记录不存在");
+          check.feedback = {
+            feedback_zh: output.feedback_zh,
+            practice_zh: output.practice_zh,
+          };
+          check.status = "completed";
         } else if (pending.kind === "conversation") {
           if (
             !object(output) ||
@@ -900,6 +923,10 @@ export function createDaily({
             (v) => v.id === key,
           );
           if (submission) submission.status = "failed";
+          const check = value.dictationChecks?.find(
+            (entry) => entry.id === key,
+          );
+          if (check) check.status = "failed";
           value.failedJob = value.pending;
           value.pending = null;
           const recording = value.recordings.find(
@@ -1009,6 +1036,10 @@ export function createDaily({
               (entry) => entry.id === lesson.pending.requestId,
             );
             if (submission) submission.status = "pending";
+            const check = lesson.dictationChecks?.find(
+              (entry) => entry.id === lesson.pending.requestId,
+            );
+            if (check) check.status = "pending";
             lesson.error = null;
             lesson._requests[requestId] = fingerprint;
             return lesson;
@@ -1081,7 +1112,55 @@ export function createDaily({
         } else {
           if (lesson.status !== "ready" || !lesson.content)
             throw failure(409, "课程尚未准备好");
-          if (action === "conversation-state") {
+          if (action === "dictation") {
+            if (lesson.pending)
+              throw failure(409, "上一条反馈正在生成，请等待完成");
+            if (!configured)
+              throw failure(503, "AI 服务尚未配置，听写已保存在此浏览器");
+            if (
+              !safeText(body.text, 6000) ||
+              !body.text.trim() ||
+              !Number.isFinite(body.start)
+            )
+              throw failure(400, "请选择句子并填写不超过 6000 字符的听写");
+            let lines = lesson.source.lines;
+            if (!Array.isArray(lines)) {
+              const item = await library.getItem(lesson.source.itemId);
+              const data = item?.data?.data?.questions
+                ? item.data.data
+                : item?.data;
+              lines = parseTranscript(
+                data?.listenDetail,
+                Number(data?.seconds) || 0,
+              );
+            }
+            const line = lines.find(
+              (line) =>
+                line.start === body.start &&
+                lesson.source.transcript.includes(line.text),
+            );
+            if (!line || !safeText(line.text, 6000) || !line.text.trim())
+              throw failure(400, "原文句子定位无效，请重新打开练习");
+            lesson.dictationChecks ||= [];
+            lesson.dictationChecks.push({
+              id: requestId,
+              start: line.start,
+              reference: line.text,
+              text: body.text,
+              status: "pending",
+              feedback: null,
+              createdAt: stamp(),
+            });
+            lesson.pending = {
+              kind: "dictation",
+              requestId,
+              state: "pending",
+              runId: null,
+              failures: 0,
+              input: { reference: line.text, text: body.text },
+            };
+            lesson.error = null;
+          } else if (action === "conversation-state") {
             if (!["active", "finished"].includes(body.state))
               throw failure(400, "交流状态无效");
             if (lesson.pending)

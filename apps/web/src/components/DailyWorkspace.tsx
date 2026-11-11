@@ -331,7 +331,9 @@ export default function DailyWorkspace({ id }: { id?: string }) {
   );
   const blocked = !!busy || !!lesson?.pending;
   return (
-    <div className="daily-workspace">
+    <div
+      className={`daily-workspace ${tab === "listening" && lesson?.content ? "daily-listening-mode" : ""}`}
+    >
       {id && (
         <a className="daily-back" href="#/daily">
           <ArrowLeft size={16} />
@@ -497,11 +499,13 @@ export default function DailyWorkspace({ id }: { id?: string }) {
                       ? "正在整理你的英文表达…"
                       : lesson.pending.kind === "writing"
                         ? "正在阅读你的写作…"
-                        : lesson.pending.kind === "transcription"
-                          ? "录音已保存，正在识别…"
-                          : lesson.pending.kind === "speech"
-                            ? "正在准备老师语音…"
-                            : "正在准备练习…"}{" "}
+                        : lesson.pending.kind === "dictation"
+                          ? "正在核对听写…"
+                          : lesson.pending.kind === "transcription"
+                            ? "录音已保存，正在识别…"
+                            : lesson.pending.kind === "speech"
+                              ? "正在准备老师语音…"
+                              : "正在准备练习…"}{" "}
                   已保存请求，可以稍后继续。
                 </p>
               )}
@@ -534,7 +538,12 @@ export default function DailyWorkspace({ id }: { id?: string }) {
                 {tab === "reading" ? (
                   <Reading lesson={lesson} disabled={blocked} send={send} />
                 ) : tab === "listening" ? (
-                  <DailyListening itemId={lesson.source.itemId} />
+                  <DailyListening
+                    itemId={lesson.source.itemId}
+                    lesson={lesson}
+                    disabled={blocked}
+                    send={send}
+                  />
                 ) : tab === "conversation" ? (
                   <Conversation
                     lesson={lesson}

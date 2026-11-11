@@ -1,7 +1,9 @@
 import gzip
+import time
 
 import httpx
 from fastapi.testclient import TestClient
+from pydantic_ai.models.test import TestModel
 
 from ielts_learning.app import build_app
 from ielts_learning.gateway import PydanticGateway
@@ -98,3 +100,42 @@ def test_speech_gateway_errors_do_not_disclose_transcripts_or_keys(tmp_path, mon
         assert response.status_code == 502
         assert "private transcript" not in response.text
         assert "synthetic-secret" not in response.text
+
+
+def test_dictation_run_uses_authenticated_runtime_and_offline_model(tmp_path):
+    gateway = PydanticGateway(
+        TestModel(
+            custom_output_args={
+                "feedback_zh": "漏写了 a。",
+                "practice_zh": "重听 bring a notebook。",
+            }
+        )
+    )
+    app = build_app(gateway=gateway, database_path=tmp_path / "runs.sqlite", token=TOKEN)
+    body = {
+        "owner_id": "original-owner",
+        "workflow": "ielts.dictation",
+        "version": "1",
+        "idempotency_key": "original-dictation-1",
+        "input": {"reference": "Please bring a notebook.", "text": "Please bring notebook."},
+    }
+    with TestClient(app) as client:
+        assert client.post("/runs", json=body).status_code == 401
+        response = client.post("/runs", headers=AUTH, json=body)
+        assert response.status_code == 200
+        run = response.json()
+        deadline = time.monotonic() + 5
+        while run["status"] not in {"succeeded", "failed"} and time.monotonic() < deadline:
+            time.sleep(0.02)
+            run = client.get(
+                f"/runs/{run['id']}", headers={**AUTH, "X-Owner-Id": "original-owner"}
+            ).json()
+        assert run["status"] == "succeeded", run
+        assert run["output"]["feedback_zh"] == "漏写了 a。"
+        assert client.post("/runs", headers=AUTH, json=body).json()["id"] == run["id"]
+        assert (
+            client.get(
+                f"/runs/{run['id']}", headers={**AUTH, "X-Owner-Id": "other-owner"}
+            ).status_code
+            == 404
+        )
