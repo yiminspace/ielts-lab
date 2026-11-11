@@ -83,6 +83,10 @@ function fakeRuntime(options = {}) {
           english: "I would like to join the club.",
           clarification_zh: "",
         }),
+        "ielts.dictation": () => ({
+          feedback_zh: "漏写了 a。",
+          practice_zh: "重听完整名词短语。",
+        }),
         "ielts.writing": () => ({
           feedback_zh: "你已完成基本表达。",
           corrections: [],
@@ -1151,3 +1155,108 @@ for (const field of ["prompt", "options", "answer"]) {
     assert.match(failed.error, /必须使用英文/);
   });
 }
+
+test("dictation checks use trusted sentences, retain history and replay idempotently", async (t) => {
+  const { service, runtime, root } = await fixture(t);
+  const seed = await service.ensure(owner, attempt());
+  let lesson = await completed(service, seed.id);
+  const reference = lesson.source.lines[0].text;
+  await createLocalDailyStore(root).mutateDaily(
+    owner,
+    "demo",
+    seed.id,
+    (value) => {
+      delete value.source.lines;
+      return value;
+    },
+  );
+  lesson = await service.get(owner, seed.id);
+  const body = {
+    requestId: "dictation-first-check",
+    expectedVersion: lesson.version,
+    start: 0,
+    text: "Welcome to centre.",
+    reference: "Untrusted replacement",
+  };
+  lesson = await service.action(owner, seed.id, "dictation", body);
+  const repeated = await service.action(owner, seed.id, "dictation", body);
+  assert.equal(repeated.dictationChecks.length, 1);
+  lesson = await completed(
+    service,
+    seed.id,
+    (value) => value.dictationChecks?.[0]?.status === "completed",
+  );
+  const call = runtime.calls.find(
+    (entry) => entry.workflow === "ielts.dictation",
+  );
+  assert.equal(call.input.reference, reference);
+  assert.notEqual(call.input.reference, body.reference);
+  assert.equal(lesson.dictationChecks[0].feedback.feedback_zh, "漏写了 a。");
+  await assert.rejects(
+    service.action(owner, seed.id, "dictation", {
+      ...body,
+      requestId: "dictation-invalid-start",
+      expectedVersion: lesson.version,
+      start: -1,
+    }),
+    { status: 400 },
+  );
+  await assert.rejects(
+    service.action(owner, seed.id, "dictation", {
+      ...body,
+      requestId: "dictation-empty-answer",
+      expectedVersion: lesson.version,
+      text: " ",
+    }),
+    { status: 400 },
+  );
+  await service.action(owner, seed.id, "dictation", {
+    ...body,
+    requestId: "dictation-second-check",
+    expectedVersion: lesson.version,
+    text: "Welcome to the centre.",
+  });
+  lesson = await completed(
+    service,
+    seed.id,
+    (value) => value.dictationChecks?.[1]?.status === "completed",
+  );
+  assert.equal(lesson.dictationChecks.length, 2);
+  assert.equal(lesson.dictationChecks[0].text, body.text);
+  assert.equal(lesson.dictationChecks[1].text, "Welcome to the centre.");
+});
+
+test("invalid dictation output fails safely and retry keeps one saved check", async (t) => {
+  let invalid = true;
+  const runtime = fakeRuntime({
+    output: (output) => {
+      if (invalid && output.practice_zh) output.practice_zh = "";
+    },
+  });
+  const { service } = await fixture(t, runtime);
+  const seed = await service.ensure(owner, attempt());
+  let lesson = await completed(service, seed.id);
+  await service.action(owner, seed.id, "dictation", {
+    requestId: "dictation-output-check",
+    expectedVersion: lesson.version,
+    start: 0,
+    text: "Welcome.",
+  });
+  lesson = await completed(
+    service,
+    seed.id,
+    (value) => value.dictationChecks?.[0]?.status === "failed",
+  );
+  assert.equal(lesson.dictationChecks[0].text, "Welcome.");
+  invalid = false;
+  await service.action(owner, seed.id, "retry", {
+    requestId: "dictation-output-retry",
+    expectedVersion: lesson.version,
+  });
+  lesson = await completed(
+    service,
+    seed.id,
+    (value) => value.dictationChecks?.[0]?.status === "completed",
+  );
+  assert.equal(lesson.dictationChecks.length, 1);
+});

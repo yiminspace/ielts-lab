@@ -434,7 +434,7 @@ export async function createApp({
           ),
         );
       const dailyRoute =
-        /^\/api\/daily\/(daily-[a-f0-9]{40})(?:\/(retry|reading|conversation|conversation-state|recognition-error|expression-help|writing|draft|speech))?$/.exec(
+        /^\/api\/daily\/(daily-[a-f0-9]{40})(?:\/(retry|reading|conversation|conversation-state|recognition-error|expression-help|writing|dictation|draft|speech))?$/.exec(
           route,
         );
       if (dailyRoute) {
@@ -454,9 +454,12 @@ export async function createApp({
           );
           return sendJSON(
             res,
-            ["conversation", "expression-help", "writing"].includes(
-              dailyRoute[2],
-            )
+            [
+              "conversation",
+              "expression-help",
+              "writing",
+              "dictation",
+            ].includes(dailyRoute[2])
               ? 202
               : 200,
             value,

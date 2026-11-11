@@ -47,6 +47,7 @@ class PydanticGateway:
             "ConversationReply": 1000,
             "ExpressionHelp": 1000,
             "WritingFeedback": 2500,
+            "DictationFeedback": 1500,
             "BlindChecks": 3500,
             "ExplanationChecks": 3500,
         }

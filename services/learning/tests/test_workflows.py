@@ -609,3 +609,37 @@ async def test_writing_part_policy_reaches_generation_and_feedback(part):
     )
     assert WRITING_PROFILES[part] in gateway.calls[-1][1]
     assert "Minor errors are acceptable" in gateway.calls[-1][1]
+
+
+@pytest.mark.asyncio
+async def test_dictation_feedback_uses_own_workflow_and_checkpoint():
+    from ielts_learning.models import DictationFeedback, DictationInput
+
+    class DictationGateway:
+        def __init__(self):
+            self.calls = []
+
+        async def generate(self, schema, instructions, payload):
+            self.calls.append((schema, instructions, payload))
+            return DictationFeedback(
+                feedback_zh="漏写了 a。", practice_zh="重听 bring a notebook。"
+            )
+
+    gateway = DictationGateway()
+    workflow = next(item for item in create_workflows(gateway) if item.name == "ielts.dictation")
+    value = DictationInput(reference="Please bring a notebook.", text="Please bring notebook.")
+    context = Context()
+    result = await workflow.execute(context, value)
+    assert result.feedback_zh == "漏写了 a。"
+    assert await workflow.execute(context, value) == result
+    assert len(gateway.calls) == 1
+    schema, instructions, payload = gateway.calls[0]
+    assert schema is DictationFeedback
+    assert payload["reference"] == value.reference
+    assert payload["text"] == value.text
+    assert "text only" in instructions
+    assert "untrusted quoted data" in instructions
+    with pytest.raises(ValidationError):
+        DictationInput(reference="Example.", text=" ")
+    with pytest.raises(ValidationError):
+        DictationFeedback(feedback_zh="", practice_zh="Replay.")

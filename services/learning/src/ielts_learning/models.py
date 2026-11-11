@@ -198,3 +198,13 @@ class ExplanationChecks(Model):
 
 class Repairs(Model):
     questions: list[Question] = Field(min_length=1, max_length=14)
+
+
+class DictationInput(Model):
+    reference: str = Field(min_length=1, max_length=6000)
+    text: str = Field(min_length=1, max_length=6000)
+
+
+class DictationFeedback(Model):
+    feedback_zh: str = Field(min_length=1, max_length=3000)
+    practice_zh: str = Field(min_length=1, max_length=1500)
