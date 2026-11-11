@@ -11,11 +11,16 @@ mkdir -m 700 "$stage"
 trap 'rm -rf -- "$stage"' EXIT HUP INT TERM
 printf '%s\n' "$DEPLOY_SSH_KEY" > "$stage/ssh.key"
 printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$stage/known_hosts"
-# The dedicated age key is read from the environment; it is never written to disk.
-"$RUNNER_TEMP/sops" --input-type dotenv --output-type dotenv --decrypt secrets/api.env.sops > "$stage/runtime.env"
-"$RUNNER_TEMP/sops" --input-type dotenv --output-type dotenv --decrypt secrets/migration.env.sops > "$stage/migration.env"
-"$RUNNER_TEMP/sops" --input-type dotenv --output-type dotenv --decrypt secrets/api-learning.env.sops > "$stage/api-learning.env"
-"$RUNNER_TEMP/sops" --input-type dotenv --output-type dotenv --decrypt secrets/learning.env.sops > "$stage/learning.env"
+# The protected job supplies both the ciphertext and its dedicated age key.
+decrypt_config() {
+  printf '%s' "${!1:?Missing protected configuration}" |
+    "$RUNNER_TEMP/sops" --input-type dotenv --output-type dotenv --decrypt /dev/stdin > "$stage/$2"
+}
+decrypt_config IELTS_SOPS_API runtime.env
+decrypt_config IELTS_SOPS_MIGRATION migration.env
+decrypt_config IELTS_SOPS_API_LEARNING api-learning.env
+decrypt_config IELTS_SOPS_LEARNING learning.env
+unset IELTS_SOPS_API IELTS_SOPS_MIGRATION IELTS_SOPS_API_LEARNING IELTS_SOPS_LEARNING SOPS_AGE_KEY
 # Do not print decrypted values. Decryption output is not automatically masked by Actions.
 python3 deploy/validate-env.py "$stage/runtime.env" "$stage/migration.env" "$stage/api-learning.env" "$stage/learning.env"
 tar -C "$stage" -cf - runtime.env migration.env api-learning.env learning.env |

@@ -209,6 +209,10 @@ jobs:
       - name: Decrypt and deploy fixed release
         env:
           SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+          IELTS_SOPS_API: ${{ secrets.IELTS_SOPS_API }}
+          IELTS_SOPS_MIGRATION: ${{ secrets.IELTS_SOPS_MIGRATION }}
+          IELTS_SOPS_API_LEARNING: ${{ secrets.IELTS_SOPS_API_LEARNING }}
+          IELTS_SOPS_LEARNING: ${{ secrets.IELTS_SOPS_LEARNING }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: bash deploy/deploy-ci.sh
