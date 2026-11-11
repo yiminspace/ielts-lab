@@ -648,8 +648,7 @@ test.describe("Daily reading allows unanswered questions", () => {
           exact: false,
         })
         .first(),
-    ).not.toBeVisible();
-    await panel.getByText("查看本段原文", { exact: true }).click();
+    ).toBeVisible();
     await expect(panel.locator(".daily-listening-transcript")).toContainText(
       "Monday",
     );
@@ -694,6 +693,81 @@ test.describe("Daily reading allows unanswered questions", () => {
     expect(await player.evaluate((node: HTMLAudioElement) => node.paused)).toBe(
       true,
     );
+    await panel.getByLabel("选择听力段落").selectOption("0");
+    await panel
+      .getByLabel("本段笔记", { exact: true })
+      .fill("Original segment note");
+    await panel
+      .getByRole("button", { name: "播放第 1 句", exact: true })
+      .click();
+    await panel
+      .getByLabel("第 1 句听写与笔记", { exact: true })
+      .fill("Original sentence note");
+    await panel.getByRole("button", { name: "隐藏原文", exact: true }).click();
+    await expect(panel.locator(".listening-sentences")).not.toContainText(
+      "Welcome to",
+    );
+    await panel.getByRole("button", { name: "显示原文", exact: true }).click();
+    await panel.getByRole("button", { name: "回到整段", exact: true }).click();
+    await expect(panel.getByLabel("本段笔记", { exact: true })).toHaveValue(
+      "Original segment note",
+    );
+    await page.getByRole("tab", { name: "阅读理解", exact: true }).click();
+    await page.getByRole("tab", { name: "分段听", exact: true }).click();
+    await expect(panel.getByLabel("本段笔记", { exact: true })).toHaveValue(
+      "Original segment note",
+    );
+    await panel
+      .getByRole("button", { name: "播放第 1 句", exact: true })
+      .click();
+    await expect(
+      panel.getByLabel("第 1 句听写与笔记", { exact: true }),
+    ).toHaveValue("Original sentence note");
+    await panel.getByRole("button", { name: "暂停", exact: true }).click();
+    await panel
+      .getByRole("button", { name: "标记还需练", exact: true })
+      .first()
+      .click();
+    await expect(
+      panel.getByRole("button", { name: "已标记 · 还需练", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await panel.getByText("局部循环", { exact: true }).click();
+    await panel.getByRole("slider").fill("0.2");
+    await panel
+      .getByRole("button", { name: "设为循环起点", exact: true })
+      .click();
+    await panel.getByRole("slider").fill("0.8");
+    await panel
+      .getByRole("button", { name: "设为循环终点", exact: true })
+      .click();
+    await panel
+      .getByRole("button", { name: "播放当前句", exact: true })
+      .click();
+    await player.evaluate((node: HTMLAudioElement) => {
+      node.currentTime = 0.81;
+    });
+    await expect
+      .poll(() => player.evaluate((node: HTMLAudioElement) => node.currentTime))
+      .toBeLessThan(0.8);
+    await expect
+      .poll(() => player.evaluate((node: HTMLAudioElement) => node.paused))
+      .toBe(false);
+    await panel.getByRole("button", { name: "暂停", exact: true }).click();
+    await panel.getByLabel("循环间隔", { exact: true }).selectOption("1");
+    await panel
+      .getByRole("button", { name: "播放当前句", exact: true })
+      .click();
+    await player.evaluate((node: HTMLAudioElement) => {
+      node.currentTime = 0.81;
+    });
+    await expect
+      .poll(() => player.evaluate((node: HTMLAudioElement) => node.paused))
+      .toBe(true);
+    await expect
+      .poll(() => player.evaluate((node: HTMLAudioElement) => node.paused))
+      .toBe(false);
+    await panel.getByRole("button", { name: "暂停", exact: true }).click();
+    await panel.getByText("局部循环", { exact: true }).click();
     await page.setViewportSize({ width: 390, height: 844 });
     expect(
       await panel.evaluate((node) => node.scrollWidth <= node.clientWidth),
