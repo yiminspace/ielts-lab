@@ -33,6 +33,7 @@ import {
 } from "../lib/recordings";
 import "../daily.css";
 import DailyPassage from "./DailyPassage";
+import DailyListening from "./DailyListening";
 
 const noCapabilities: DailyCapabilities = {
   runtime: false,
@@ -129,9 +130,9 @@ export default function DailyWorkspace({ id }: { id?: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
-  const [tab, setTab] = useState<"reading" | "conversation" | "writing">(
-    "reading",
-  );
+  const [tab, setTab] = useState<
+    "reading" | "listening" | "conversation" | "writing"
+  >("reading");
   const current = useRef<DailyLesson | null>(null);
   const alive = useRef(true);
   const lock = useRef(false);
@@ -471,6 +472,7 @@ export default function DailyWorkspace({ id }: { id?: string }) {
                 {(
                   [
                     ["reading", BookOpen, "阅读理解"],
+                    ["listening", Play, "分段听"],
                     ["conversation", MessageCircle, "主题交流"],
                     ["writing", PenLine, "写作练习"],
                   ] as const
@@ -522,13 +524,17 @@ export default function DailyWorkspace({ id }: { id?: string }) {
                 aria-label={
                   tab === "reading"
                     ? "阅读理解"
-                    : tab === "conversation"
-                      ? "主题交流"
-                      : "写作练习"
+                    : tab === "listening"
+                      ? "分段听"
+                      : tab === "conversation"
+                        ? "主题交流"
+                        : "写作练习"
                 }
               >
                 {tab === "reading" ? (
                   <Reading lesson={lesson} disabled={blocked} send={send} />
+                ) : tab === "listening" ? (
+                  <DailyListening itemId={lesson.source.itemId} />
                 ) : tab === "conversation" ? (
                   <Conversation
                     lesson={lesson}
