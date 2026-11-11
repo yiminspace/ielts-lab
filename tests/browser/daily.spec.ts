@@ -600,12 +600,44 @@ test.describe("Daily reading allows unanswered questions", () => {
         createdAt: new Date().toISOString(),
       },
     );
+    await page.route("**/api/items/demo-listening", async (route) => {
+      const response = await route.fetch();
+      const item = await response.json();
+      // Exercise archive media mapping with original diagram assets.
+      const question = item.data.questions[0].questionJson;
+      question.questionsImgSrc = "https://archive.invalid/question.svg";
+      question.optionsImgSrc = "https://archive.invalid/options.svg";
+      item.localMedia[question.questionsImgSrc] =
+        "/media/original-segment-question.svg";
+      item.localMedia[question.optionsImgSrc] =
+        "/media/original-segment-options.svg";
+      await route.fulfill({ response, json: item });
+    });
+    await page.route("**/media/original-segment-*.svg", (route) =>
+      route.fulfill({
+        contentType: "image/svg+xml",
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="900" height="200"><rect width="900" height="200" fill="white"/><text x="20" y="40">Original learning centre: A Reception, B Library</text></svg>',
+      }),
+    );
     await page.goto(`/#/daily/${seed.id}`);
     await page.getByRole("tab", { name: "分段听", exact: true }).click();
     const panel = page.getByRole("tabpanel", { name: "分段听", exact: true });
     await expect(
       panel.getByRole("heading", { name: "第 1 题", exact: true }),
     ).toBeVisible();
+    for (const name of ["题目图示", "匹配选项图"]) {
+      const diagram = panel.getByRole("img", { name, exact: true });
+      await expect(diagram).toBeVisible();
+      await expect
+        .poll(() =>
+          diagram.evaluate((node: HTMLImageElement) => node.naturalWidth),
+        )
+        .toBe(900);
+      await expect(diagram).toHaveAttribute(
+        "src",
+        /^\/media\/original-segment-/,
+      );
+    }
     const player = panel.locator("audio");
     await expect
       .poll(() => player.evaluate((node: HTMLAudioElement) => node.readyState))
@@ -642,7 +674,7 @@ test.describe("Daily reading allows unanswered questions", () => {
       panel.getByRole("heading", { name: "第 2 题", exact: true }),
     ).toBeVisible();
     await expect(
-      panel.locator(".daily-listening-transcript details[open]"),
+      panel.locator(".daily-listening-transcript[open]"),
     ).toHaveCount(0);
     expect(
       await player.evaluate((node: HTMLAudioElement) => node.currentTime),

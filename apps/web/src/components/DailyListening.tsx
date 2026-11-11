@@ -196,6 +196,20 @@ function SegmentPlayer({ item }: { item: StudyItem }) {
         {segment.entries.map(({ row, group }) => (
           <article key={row.id}>
             <RichText html={group.title} />
+            {mediaUrl(item, group.image) && (
+              <img
+                className="daily-listening-diagram"
+                src={mediaUrl(item, group.image)}
+                alt="题目图示"
+              />
+            )}
+            {mediaUrl(item, group.optionsImage) && (
+              <img
+                className="daily-listening-diagram"
+                src={mediaUrl(item, group.optionsImage)}
+                alt="匹配选项图"
+              />
+            )}
             <RichText html={group.content} />
             <RichText html={row.content} />
             {row.options.map((option) => (
