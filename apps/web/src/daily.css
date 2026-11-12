@@ -573,44 +573,278 @@
   }
 }
 
+/* ---------- Segmented listening ---------- */
 .daily-listening {
+  --ls-accent: var(--vg-color-accent);
+  --ls-accent-soft: var(--vg-color-accent-soft);
+  --ls-accent-text: var(--vg-color-accent-text);
   max-width: 1200px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 12px 0;
+  font-size: 14px;
 }
-.daily-listening-nav {
+.daily-listening button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.2;
+}
+.daily-listening select {
+  min-height: 34px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.daily-listening button:focus-visible,
+.daily-listening input:focus-visible,
+.daily-listening select:focus-visible,
+.daily-listening textarea:focus-visible,
+.daily-listening summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.daily-listening details > summary {
+  cursor: pointer;
+}
+.daily-listening .listening-icon {
+  width: 34px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+/* Toggle buttons: fixed label, state shown by aria-pressed. */
+.daily-listening .listening-toggle[aria-pressed="true"] {
+  background: var(--ls-accent-soft);
+  border-color: var(--ls-accent);
+  color: var(--ls-accent-text);
+  font-weight: 600;
+}
+.daily-listening .listening-primary {
+  background: var(--ls-accent);
+  border-color: var(--ls-accent);
+  color: var(--vg-color-filled-text, #fff);
+  font-weight: 600;
+}
+.daily-listening .listening-primary:hover:not(:disabled) {
+  background: var(--ls-accent);
+  filter: brightness(1.06);
+}
+.daily-listening .listening-text-button {
+  border: 0;
+  background: transparent;
+  min-height: 28px;
+  padding: 2px 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Segment navigator */
+.listening-segment-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.listening-segment-nav h2 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.listening-segment-list {
+  display: flex;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  min-width: 0;
+}
+.listening-segment-list::-webkit-scrollbar {
+  display: none;
+}
+.daily-listening .listening-segment-list button {
+  min-width: 44px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.daily-listening .listening-segment-list button::before {
+  content: "Q";
+  opacity: 0.6;
+  margin-right: -3px;
+}
+.daily-listening .listening-segment-list button[aria-current="step"] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--surface);
+  font-weight: 600;
+}
+.listening-segment-meta {
+  margin: 0 0 0 auto;
+  padding-left: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Player: transport · progress · options */
+.listening-player {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 12px;
-  margin: 16px 0;
+  gap: 8px 14px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
 }
-.daily-listening-nav button,
-.daily-listening-nav select {
-  min-height: 44px;
+.listening-transport {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
-.daily-listening article,
-.daily-listening-transcript {
-  margin-top: 20px;
+.daily-listening .listening-transport .listening-icon {
+  border-color: transparent;
+  background: transparent;
 }
-.daily-listening details summary {
-  cursor: pointer;
-  padding: 12px 0;
+.daily-listening .listening-transport .listening-icon:hover:not(:disabled) {
+  background: var(--surface);
+  border-color: var(--line);
+}
+.daily-listening .listening-play {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--ls-accent);
+  border-color: var(--ls-accent);
+  color: var(--vg-color-filled-text, #fff);
+}
+.daily-listening .listening-play:hover {
+  background: var(--ls-accent);
+  filter: brightness(1.06);
+}
+.listening-seek {
+  flex: 1 1 220px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.listening-track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+.listening-track input {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  margin: 0;
+  accent-color: var(--ls-accent);
+  background: transparent;
+}
+.listening-track-tick {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 12px;
+  margin: -6px 0 0 -1px;
+  border-radius: 1px;
+  background: var(--muted);
+  opacity: 0.45;
+  pointer-events: none;
+}
+.listening-track-range {
+  position: absolute;
+  top: 50%;
+  height: 14px;
+  margin-top: -7px;
+  border-radius: 4px;
+  background: var(--ls-accent-soft);
+  outline: 1px solid var(--ls-accent);
+  pointer-events: none;
+}
+.listening-time {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.listening-options {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.listening-segmented {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.daily-listening .listening-segmented button {
+  border: 0;
+  background: transparent;
+  min-height: 28px;
+  padding: 3px 10px;
+  color: var(--muted);
+}
+.daily-listening .listening-segmented button[aria-checked="true"] {
+  background: var(--ink);
+  color: var(--surface);
+  font-weight: 600;
+}
+.listening-inline-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.listening-ab {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.listening-ab.is-set {
+  padding: 2px 2px 2px 10px;
+  border: 1px solid var(--ls-accent);
+  border-radius: 6px;
+  background: var(--ls-accent-soft);
+  color: var(--ls-accent-text);
+  font-weight: 600;
+}
+.daily-listening .listening-ab .listening-icon {
+  width: 28px;
+  min-height: 28px;
+  border-color: transparent;
+  background: transparent;
 }
 
-.daily-listening-diagram {
-  display: block;
-  max-width: 100%;
-  height: auto;
-  margin: 12px 0;
-}
-
-/* Transcript and writing remain adjacent throughout deliberate listening. */
+/* Workbench: transcript | questions */
 .listening-workbench {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-  gap: 28px;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: 20px;
   align-items: start;
+  margin-top: 12px;
 }
 .listening-workbench > section {
   min-width: 0;
@@ -618,579 +852,207 @@
 .listening-transcript-header {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
+  gap: 6px;
+  margin-bottom: 6px;
 }
 .listening-transcript-header h3 {
-  margin-right: auto;
+  margin: 0 auto 0 0;
+  font-size: 14px;
 }
 .listening-sentences {
+  position: relative;
   list-style: none;
+  margin: 0;
   padding: 0;
-  max-height: 55vh;
+  max-height: 60vh;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
-.listening-sentences li {
-  border-left: 3px solid transparent;
-  margin: 4px 0;
+.listening-sentences > li {
+  border-radius: 8px;
+  border: 1px solid transparent;
+  margin: 2px 0;
 }
-.listening-sentences li.is-current {
-  border-color: #2563a6;
-  background: #eaf2fc;
+.listening-sentences > li.is-current {
+  background: color-mix(in srgb, var(--ls-accent-soft) 55%, transparent);
 }
-.listening-sentences li > button {
+.listening-sentences > li.is-selected {
+  background: var(--ls-accent-soft);
+  border-color: var(--ls-accent);
+}
+.listening-line {
   display: flex;
-  gap: 16px;
-  width: 100%;
-  text-align: left;
-  line-height: 1.7;
-  padding: 12px;
+  align-items: flex-start;
+}
+.daily-listening .listening-line-play {
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 6px 8px 10px;
   border: 0;
   background: transparent;
-  color: inherit;
+  text-align: left;
+  font-size: 15px;
+  line-height: 1.6;
   font-weight: 400;
 }
-.listening-sentences small {
-  display: block;
-  color: #526174;
-  font-size: 0.9em;
+.daily-listening .listening-line-play:hover {
+  background: transparent;
+}
+.listening-sentences > li:not(.is-selected):hover {
+  background: var(--panel);
 }
 .listening-timestamp {
   flex-shrink: 0;
-  font-size: 0.8em;
-  color: #526174;
+  min-width: 34px;
   padding-top: 3px;
+  font-size: 12px;
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
-.listening-player {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: #fff;
-  border-block: 1px solid #dce3ec;
-  padding: 12px 0;
-}
-.listening-player .daily-listening-nav {
-  margin: 8px 0;
-  gap: 8px;
-}
-.listening-player label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.listening-seek {
-  display: flex;
-  gap: 12px;
-  font-size: 0.85em;
-}
-.listening-seek input {
-  flex: 1;
-  min-width: 40px;
-  accent-color: #2563a6;
-}
-.listening-shortcuts,
-.listening-save-status {
-  font-size: 0.8em;
-  color: #526174;
-  margin: 6px 0;
-}
-.listening-practice {
-  padding-top: 24px;
-}
-.listening-note-label {
-  display: block;
-  font-weight: 600;
-  margin-bottom: 12px;
-}
-.listening-practice textarea {
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 180px;
-  resize: vertical;
-  padding: 14px;
-  font: inherit;
-  line-height: 1.7;
-  border: 1px solid #a8b7c9;
-  border-radius: 6px;
-}
-.listening-option {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  margin: 8px 0;
-}
-.listening-option p {
-  margin: 0;
-}
-.daily-listening button:focus-visible,
-.daily-listening input:focus-visible,
-.daily-listening textarea:focus-visible {
-  outline: 2px solid #2563a6;
-  outline-offset: 3px;
-}
-@media (max-width: 760px) {
-  .daily-listening {
-    padding: 12px;
-  }
-  .listening-workbench {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0;
-  }
-  .listening-sentences {
-    max-height: 38vh;
-  }
-  .listening-shortcuts {
-    display: none;
-  }
-  .listening-seek {
-    flex-wrap: wrap;
-  }
-}
-.listening-sentences li > .listening-mark {
-  width: auto;
-  margin-left: 56px;
-  padding: 4px 10px;
-  font-size: 0.75em;
-  color: #526174;
-}
-.listening-sentences li > .listening-mark[aria-pressed="true"] {
-  color: #184f8b;
-  font-weight: 600;
-}
-
-/* Keep navigation, transcript, writing and questions inside the desktop viewport. */
-.listening-segment-nav h2 {
-  font-size: 16px;
-  margin: 0 auto 0 0;
-}
-.listening-segment-meta {
-  color: var(--muted);
-  font-size: 12px;
-  margin: 0 0 0 auto;
-}
-.listening-choices {
-  border: 0;
-  padding: 0;
-  margin: 12px 0;
-  min-width: 0;
-}
-.listening-choices legend {
-  font-size: 12px;
-  color: var(--muted);
-  margin-bottom: 6px;
-}
-.listening-choices .listening-option {
-  align-items: baseline;
-  padding: 8px 10px;
-  margin: 4px 0;
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  cursor: pointer;
-  font-size: 14px;
-}
-.listening-option.is-selected {
-  background: #eaf2fc;
-  border-color: #2563a6;
-}
-.listening-option input {
-  flex-shrink: 0;
-  accent-color: #2563a6;
-}
-.listening-option .rich-text {
+.listening-line-text {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-@media (min-width: 761px) {
-  .main-shell:has(.daily-listening-mode) .page-main {
-    height: calc(100dvh - 56px);
-    min-height: 0;
-    flex: none;
-    padding: 12px 24px;
-  }
-  .main-shell:has(.daily-listening-mode) .page-footer {
-    display: none;
-  }
-  .daily-listening-mode {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-  }
-  .daily-listening-mode .daily-back {
-    margin-bottom: 5px;
-    font-size: 12px;
-  }
-  .daily-listening-mode .page-heading {
-    margin-bottom: 4px;
-  }
-  .daily-listening-mode .page-heading h1 {
-    font-size: 19px;
-    margin: 0;
-  }
-  .daily-listening-mode .page-heading p {
-    margin: 3px 0;
-    font-size: 12px;
-  }
-  .daily-listening-mode .daily-context {
-    padding: 5px 0;
-    font-size: 12px;
-  }
-  .daily-listening-mode .daily-context p {
-    margin: 0;
-  }
-  .daily-listening-mode .daily-boundary {
-    display: none;
-  }
-  .daily-listening-mode .daily-tabs {
-    margin-top: 4px;
-    gap: 24px;
-  }
-  .daily-listening-mode .daily-tabs button {
-    padding: 8px 3px;
-    min-height: 36px;
-  }
-  .daily-listening-mode > [role="tabpanel"] {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-  }
-  .daily-listening-mode .daily-listening {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-height: 0;
-    width: 100%;
-    padding: 8px 0 0;
-  }
-  .daily-listening-mode .daily-listening-nav {
-    margin: 0;
-    gap: 8px;
-  }
-  .daily-listening-mode .daily-listening button,
-  .daily-listening-mode .daily-listening select {
-    min-height: 32px;
-    padding: 5px 9px;
-    font-size: 13px;
-  }
-  .daily-listening-mode .listening-segment-nav {
-    padding-bottom: 8px;
-  }
-  .daily-listening-mode .listening-segment-nav label {
-    font-size: 12px;
-  }
-  .daily-listening-mode .listening-player {
-    position: static;
-    flex-shrink: 0;
-    padding: 8px 0;
-  }
-  .daily-listening-mode .listening-player .daily-listening-nav {
-    margin-top: 6px;
-  }
-  .daily-listening-mode .listening-player label {
-    font-size: 12px;
-  }
-  .daily-listening-mode .listening-range {
-    display: inline-block;
-    font-size: 12px;
-  }
-  .daily-listening-mode .listening-range summary {
-    padding: 6px 0 0;
-  }
-  .daily-listening-mode .listening-shortcuts {
-    display: inline;
-    margin-left: 16px;
-    font-size: 11px;
-  }
-  .daily-listening-mode .listening-workbench {
-    flex: 1;
-    min-height: 0;
-    gap: 20px;
-    align-items: stretch;
-    padding-top: 12px;
-  }
-  .daily-listening-mode .daily-listening-transcript {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    margin: 0;
-    border-right: 1px solid var(--line);
-    padding-right: 20px;
-  }
-  .daily-listening-mode .listening-transcript-header {
-    flex-shrink: 0;
-    gap: 8px;
-  }
-  .daily-listening-mode .listening-transcript-header h3 {
-    font-size: 14px;
-    margin-block: 0 8px;
-  }
-  .daily-listening-mode .listening-transcript-header label {
-    font-size: 12px;
-  }
-  .daily-listening-mode .daily-listening-transcript > button {
-    align-self: flex-start;
-  }
-  .daily-listening-mode .listening-sentences {
-    flex: 1;
-    min-height: 0;
-    max-height: none;
-    overflow-y: auto;
-    margin: 8px 0 0;
-    overscroll-behavior: contain;
-    scrollbar-gutter: stable;
-  }
-  .daily-listening-mode .listening-sentences li > button {
-    padding: 8px;
-    font-size: 15px;
-  }
-  .daily-listening-mode .listening-sentences li > .listening-mark {
-    padding: 2px 8px;
-    font-size: 11px;
-  }
-  .daily-listening-mode .listening-practice {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    padding: 0;
-  }
-  .daily-listening-mode .listening-note-label {
-    font-size: 14px;
-    margin-bottom: 6px;
-  }
-  .daily-listening-mode .listening-practice textarea {
-    min-height: 72px;
-    height: 112px;
-    max-height: 25vh;
-    padding: 10px;
-    flex-shrink: 0;
-    font-size: 14px;
-  }
-  .daily-listening-mode .listening-save-status {
-    margin: 4px 0 8px;
-    font-size: 11px;
-  }
-  .daily-listening-mode .listening-questions {
-    min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    scrollbar-gutter: stable;
-    border-top: 1px solid var(--line);
-  }
-  .daily-listening-mode .listening-questions > summary {
-    position: sticky;
-    top: 0;
-    background: var(--vg-color-surface, white);
-    padding: 8px 0;
-    font-size: 14px;
-    z-index: 1;
-  }
-  .daily-listening-mode .daily-listening article {
-    margin-top: 8px;
-    font-size: 14px;
-  }
+.listening-line-text small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
 }
-@media (min-width: 761px) {
-  .daily-listening-mode {
-    position: relative;
-  }
-  .daily-listening-mode .daily-back {
-    position: absolute;
-    right: 0;
-    top: 2px;
-    margin: 0;
-  }
-  .daily-listening-mode .page-heading {
-    padding-right: 120px;
-  }
-  .daily-listening-mode .daily-context {
-    display: none;
-  }
+.listening-line-hidden {
+  color: var(--muted);
+  letter-spacing: 0.04em;
 }
-@media (min-width: 761px) and (max-height: 800px) {
-  .daily-listening-mode .listening-practice textarea {
-    height: 76px;
-  }
+.listening-line-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 6px 0 0;
+  flex-shrink: 0;
 }
-@media (max-width: 760px) {
-  .daily-listening-mode .listening-player {
-    position: static;
-  }
-  .daily-listening-mode .daily-context,
-  .daily-listening-mode .daily-boundary {
-    display: none;
-  }
-  .daily-listening-mode .daily-back {
-    margin-bottom: 10px;
-  }
-  .daily-listening-mode .page-heading h1 {
-    font-size: 19px;
-  }
-  .daily-listening-mode .daily-tabs {
-    gap: 10px;
-    margin-top: 12px;
-  }
-  .daily-listening-mode .daily-tabs button {
-    white-space: nowrap;
-    font-size: 12px;
-    gap: 5px;
-  }
-  .daily-listening-mode .listening-segment-nav h2 {
-    flex-basis: 100%;
-  }
-  .daily-listening-mode .listening-segment-nav {
-    gap: 8px;
-  }
-  .daily-listening-mode .listening-segment-nav label {
-    font-size: 12px;
-  }
+.listening-badge {
+  font-size: 11px;
+  color: var(--green);
+  background: var(--green-soft);
+  border-radius: 4px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+.daily-listening .listening-mark {
+  width: 30px;
+  min-height: 30px;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0.45;
+}
+.listening-sentences > li:hover .listening-mark,
+.daily-listening .listening-mark:focus-visible {
+  opacity: 1;
+}
+.daily-listening .listening-mark[aria-pressed="true"] {
+  opacity: 1;
+  color: var(--vg-color-warning);
+}
+.daily-listening .listening-mark[aria-pressed="true"] svg {
+  fill: currentColor;
+}
+.daily-listening .listening-open-dictation {
+  margin: 0 0 8px 56px;
+  min-height: 28px;
+  padding: 3px 10px;
+  font-size: 12px;
+  background: var(--surface);
+}
+.listening-shortcuts {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--muted);
 }
 
-.listening-sentence-preview {
-  padding: 0 12px 8px 56px;
-  color: var(--muted);
-  font-size: 12px;
-}
-.listening-sentence-preview p {
-  margin: 4px 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
+/* Sentence dictation */
 .listening-sentence-editor {
-  padding: 8px 14px 12px 56px;
-  font-size: 14px;
+  margin: 0 10px 10px 56px;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
 }
-.listening-sentence-editor > label {
-  display: block;
+.listening-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.listening-editor-head label {
   font-weight: 600;
-  margin: 10px 0 6px;
+  font-size: 13px;
 }
 .listening-sentence-editor textarea {
+  display: block;
   width: 100%;
-  box-sizing: border-box;
+  min-height: 60px;
+  height: 64px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: inherit;
   font: inherit;
   line-height: 1.6;
-  padding: 9px 12px;
   resize: vertical;
-  min-height: 68px;
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  background: var(--vg-color-surface, white);
-  color: inherit;
-}
-.listening-sentence-editor textarea:last-child {
-  min-height: 44px;
-  height: 56px;
 }
 .listening-check-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
   flex-wrap: wrap;
-  margin: 8px 0;
-}
-.listening-check-actions > button:first-child {
-  background: #2563a6;
-  color: white;
-  border-color: #2563a6;
-}
-.listening-check-actions > button:last-child {
-  margin-left: auto;
-}
-.listening-check-actions small,
-.listening-diff small {
-  color: var(--muted);
-  font-size: 11px;
+  gap: 8px;
+  margin: 8px 0 0;
 }
 .listening-diff,
 .listening-ai-notes {
+  margin: 10px 0 0;
   line-height: 1.7;
-  margin: 12px 0;
 }
 .listening-diff p,
 .listening-ai-notes p {
-  margin: 5px 0;
+  margin: 4px 0;
+}
+.listening-diff small,
+.listening-ai-notes small {
+  color: var(--muted);
+  font-size: 11px;
 }
 .listening-diff ins {
-  background: #d8f5df;
-  color: #185b2d;
+  background: var(--vg-color-success-soft);
+  color: var(--vg-color-success);
   text-decoration: none;
-  padding: 2px;
+  padding: 1px 2px;
+  border-radius: 2px;
 }
 .listening-diff del {
-  background: #fde5e5;
-  color: #8b2727;
-  padding: 2px;
+  background: var(--vg-color-danger-soft);
+  color: var(--vg-color-danger);
+  padding: 1px 2px;
+  border-radius: 2px;
 }
 .listening-ai-notes {
   border-top: 1px solid var(--line);
-  padding-top: 10px;
+  padding-top: 6px;
   font-size: 13px;
+}
+.listening-ai-notes > summary {
+  padding: 4px 0;
+  font-size: 12px;
+  font-weight: 600;
 }
 .listening-ai-notes article {
   border-top: 1px solid var(--line);
   padding: 6px 0;
-}
-.listening-segment-notes {
-  border-top: 1px solid var(--line);
-  margin-top: 12px;
-  flex-shrink: 0;
-}
-.listening-segment-notes label {
-  display: block;
-  font-size: 13px;
-  margin-bottom: 6px;
-}
-@media (min-width: 761px) {
-  .daily-listening-mode .listening-workbench {
-    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
-  }
-  .daily-listening-mode .listening-questions {
-    flex: 1;
-  }
-  .daily-listening-mode .listening-segment-notes summary {
-    padding: 8px 0;
-    font-size: 14px;
-  }
-}
-@media (max-width: 760px) {
-  .listening-sentence-editor {
-    padding-left: 12px;
-  }
-  .daily-listening-mode .listening-sentences {
-    max-height: 68dvh;
-  }
-}
-
-/* Give the transcript the viewport, keep secondary playback controls in a popover. */
-.listening-range {
-  position: relative;
-}
-.listening-range > summary {
-  list-style: none;
-  cursor: pointer;
-}
-.listening-range > summary::-webkit-details-marker {
-  display: none;
-}
-.listening-range[open] {
-  background: var(--vg-color-surface, white);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 10px;
-  box-shadow: 0 5px 18px #00000012;
-}
-.listening-range .listening-settings-heading {
-  font-size: 12px;
-  margin: 10px 0 6px;
-  color: var(--muted);
-}
-.listening-range .listening-shortcuts {
-  display: block;
-  margin: 10px 0 0;
 }
 .listening-markdown {
   overflow-wrap: anywhere;
@@ -1217,146 +1079,196 @@
 .listening-feedback > button {
   margin-top: 4px;
 }
-.listening-sentence-preview .listening-markdown {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.listening-sentence-editor {
-  padding: 0 12px 8px 42px;
-}
-.listening-sentence-editor > label {
-  margin: 4px 0;
-}
-.listening-sentence-editor textarea {
-  min-height: 56px;
-  height: 64px;
-}
-.listening-diff,
-.listening-ai-notes {
-  margin: 8px 0;
-}
-.listening-ai-notes {
-  padding-top: 6px;
-}
-.listening-ai-notes > strong {
-  font-size: 12px;
+.listening-save-status {
+  margin: 6px 0 0;
+  font-size: 11px;
   color: var(--muted);
 }
+
+/* Questions and notes */
+.listening-practice {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.listening-questions > summary,
+.listening-segment-notes > summary {
+  padding: 8px 0;
+  font-weight: 600;
+}
+.listening-questions article {
+  margin: 4px 0 14px;
+}
+.daily-listening-diagram {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 10px 0;
+}
+.listening-answer > summary {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 4px 0;
+}
+.listening-answer p {
+  margin: 4px 0;
+  font-weight: 600;
+}
+.listening-choices {
+  border: 0;
+  padding: 0;
+  margin: 10px 0;
+  min-width: 0;
+}
+.listening-choices legend {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.listening-option {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 10px;
+  margin: 4px 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.listening-option.is-selected {
+  background: var(--ls-accent-soft);
+  border-color: var(--ls-accent);
+}
+.listening-option input {
+  flex-shrink: 0;
+  accent-color: var(--ls-accent);
+}
+.listening-option p {
+  margin: 0;
+}
+.listening-option .rich-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.listening-segment-notes {
+  border-top: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.listening-segment-notes label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.listening-segment-notes textarea {
+  display: block;
+  width: 100%;
+  min-height: 72px;
+  height: 96px;
+  max-height: 25vh;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: inherit;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+/* Desktop: the practice page fills the viewport; panes scroll on their own. */
 @media (min-width: 761px) {
-  .main-shell:has(.daily-listening-mode) .topbar {
+  .main-shell:has(.daily-listening-mode) .topbar,
+  .main-shell:has(.daily-listening-mode) .page-footer {
     display: none;
   }
   .main-shell:has(.daily-listening-mode) .page-main {
     height: 100dvh;
+    min-height: 0;
+    flex: none;
     padding: 10px 20px;
   }
+  .daily-listening-mode {
+    position: relative;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .daily-listening-mode .daily-back {
+    position: absolute;
+    right: 0;
+    top: 2px;
+    margin: 0;
+    font-size: 12px;
+  }
+  .daily-listening-mode .page-heading {
+    margin: 0;
+    padding-right: 120px;
+  }
   .daily-listening-mode .page-heading h1 {
+    margin: 0;
     font-size: 16px;
     line-height: 28px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .daily-listening-mode .page-heading p {
+  .daily-listening-mode .page-heading p,
+  .daily-listening-mode .daily-context,
+  .daily-listening-mode .daily-boundary {
     display: none;
   }
   .daily-listening-mode .daily-tabs {
     margin: 0;
+    gap: 18px;
   }
   .daily-listening-mode .daily-tabs button {
     font-size: 12px;
     padding: 6px 2px;
     min-height: 32px;
   }
-  .daily-listening-mode .daily-listening {
-    padding-top: 4px;
-  }
-  .daily-listening-mode .listening-segment-nav {
-    padding-bottom: 4px;
-  }
-  .daily-listening-mode .listening-segment-nav h2 {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-  }
-  .daily-listening-mode .listening-segment-meta {
-    font-size: 11px;
-  }
-  .daily-listening-mode .listening-player {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 6px 0;
-    position: relative;
-  }
-  .daily-listening-mode .listening-player > .daily-listening-nav {
-    order: 0;
-    flex-wrap: nowrap;
-    margin: 0;
-    gap: 5px;
-  }
-  .daily-listening-mode .listening-player > .listening-seek {
-    order: 1;
+  .daily-listening-mode > [role="tabpanel"] {
     flex: 1;
-    min-width: 130px;
-    margin: 0;
-    font-size: 0;
-    gap: 8px;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
-  .daily-listening-mode .listening-seek span {
-    font-size: 11px;
-    white-space: nowrap;
-  }
-  .daily-listening-mode .listening-range {
-    order: 2;
-    flex-shrink: 0;
-    margin: 0;
-  }
-  .daily-listening-mode .listening-range > summary {
-    padding: 6px 8px;
-    font-size: 12px;
-  }
-  .daily-listening-mode .listening-range[open] {
-    position: absolute;
-    right: 0;
-    top: 4px;
-    width: 300px;
-    z-index: 5;
-  }
-  .daily-listening-mode .listening-range[open] > summary {
-    font-weight: 600;
-    padding: 0 0 6px;
-  }
-  .daily-listening-mode .listening-range .daily-listening-nav {
-    flex-wrap: wrap;
+  .daily-listening-mode .daily-listening {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 8px 0 0;
   }
   .daily-listening-mode .listening-workbench {
-    padding-top: 6px;
+    flex: 1;
+    min-height: 0;
+    align-items: stretch;
   }
-  .daily-listening-mode .listening-transcript-header {
-    gap: 8px;
-    margin-bottom: 4px;
-  }
-  .daily-listening-mode .listening-transcript-header h3 {
-    margin: 0 auto 0 0;
-  }
-  .daily-listening-mode .listening-transcript-header label {
+  .daily-listening-mode .daily-listening-transcript {
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    min-height: 0;
+    padding-right: 20px;
+    border-right: 1px solid var(--line);
   }
   .daily-listening-mode .listening-sentences {
-    margin-top: 0;
+    flex: 1;
+    min-height: 0;
+    max-height: none;
   }
-  .daily-listening-mode .listening-sentence-editor button {
-    min-height: 28px;
-    padding: 4px 8px;
+  .daily-listening-mode .listening-questions {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
   }
-  .daily-listening-mode .listening-ai-notes p {
-    font-size: 13px;
+  .daily-listening-mode .listening-questions > summary {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--surface);
   }
 }
 @media (min-width: 1100px) {
@@ -1366,53 +1278,30 @@
     left: 0;
     width: 30%;
     padding: 0;
-    margin: 0;
   }
   .daily-listening-mode .daily-tabs {
     padding-left: 32%;
     padding-right: 100px;
     min-height: 36px;
-    gap: 18px;
   }
   .daily-listening-mode .daily-back {
     top: 8px;
   }
 }
-@media (min-width: 761px) and (max-width: 1099px) {
-  .daily-listening-mode .listening-player {
-    flex-wrap: wrap;
-  }
-  .daily-listening-mode .listening-player > .listening-seek {
-    flex-basis: 100%;
-    order: 3;
+@media (min-width: 761px) and (max-height: 760px) {
+  .daily-listening-mode .listening-segment-notes textarea {
+    height: 64px;
   }
 }
-@media (max-width: 760px) {
-  .daily-listening-mode .page-heading {
-    margin: 0;
-  }
-  .daily-listening-mode .page-heading h1 {
-    font-size: 16px;
-  }
-  .daily-listening-mode .page-heading p {
-    display: none;
-  }
-  .daily-listening-mode .listening-segment-nav h2 {
-    display: none;
-  }
-  .daily-listening-mode .listening-transcript-header h3 {
-    font-size: 14px;
-    margin: 0 auto 0 0;
-  }
-  .daily-listening-mode .listening-transcript-header button {
-    padding: 5px;
-    min-height: 32px;
-    font-size: 12px;
-  }
-  .listening-sentence-editor {
-    padding-left: 12px;
-  }
+.daily-listening-mode .page-heading > div {
+  min-width: 0;
+  flex: 1;
 }
+.daily-listening-mode .daily-working {
+  display: none;
+}
+
+/* Phone: one column; keep the player reachable while reading. */
 @media (max-width: 760px) {
   .daily-listening-mode {
     position: relative;
@@ -1425,82 +1314,75 @@
     font-size: 11px;
   }
   .daily-listening-mode .page-heading {
+    margin: 0;
     padding-right: 100px;
   }
   .daily-listening-mode .page-heading h1 {
+    font-size: 16px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .daily-listening-mode .page-heading p,
+  .daily-listening-mode .daily-context,
+  .daily-listening-mode .daily-boundary {
+    display: none;
+  }
   .daily-listening-mode .daily-tabs {
+    gap: 10px;
     margin-top: 4px;
   }
-  .daily-listening-mode .daily-listening {
-    padding: 6px 0;
-  }
-  .daily-listening-mode .listening-segment-nav {
-    margin: 4px 0;
-  }
-  .daily-listening-mode .listening-segment-meta {
-    font-size: 10px;
-  }
-  .daily-listening-mode .listening-player {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 6px 0;
-  }
-  .daily-listening-mode .listening-player > .listening-seek {
-    order: 0;
-    width: 100%;
-    margin: 0;
-    font-size: 0;
-  }
-  .daily-listening-mode .listening-seek span {
-    font-size: 11px;
-  }
-  .daily-listening-mode .listening-player > .daily-listening-nav {
-    order: 1;
+  .daily-listening-mode .daily-tabs button {
+    white-space: nowrap;
+    font-size: 12px;
     gap: 5px;
-    margin: 0;
-    width: 100%;
   }
-  .daily-listening-mode .listening-player > .listening-range {
-    order: 2;
-    align-self: stretch;
-    margin: 0;
+  .daily-listening {
+    padding: 8px 0;
   }
-  .daily-listening-mode .listening-player button,
-  .daily-listening-mode .listening-player select {
-    min-height: 36px;
-    padding: 5px 8px;
-    font-size: 12px;
+  .listening-segment-meta {
+    display: none;
   }
-  .daily-listening-mode .listening-player label {
-    font-size: 12px;
+  .listening-player {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    padding: 8px;
+    gap: 6px 8px;
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--ink) 8%, transparent);
   }
-  .daily-listening-mode .listening-range > summary {
-    padding: 5px 0;
-    font-size: 12px;
+  .listening-transport {
+    order: 1;
+    flex-basis: 100%;
+    justify-content: center;
+    gap: 12px;
   }
-  .daily-listening-mode .listening-transcript-header {
-    margin-top: 10px;
-    gap: 6px;
-  }
-  .daily-listening-mode .listening-transcript-header h3 {
+  .listening-seek {
+    order: 0;
     flex-basis: 100%;
   }
-}
-.daily-listening-mode .page-heading > div {
-  min-width: 0;
-  flex: 1;
-}
-.daily-listening-mode .daily-working {
-  display: none;
-}
-.listening-ai-notes > summary {
-  padding: 4px 0;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
+  .listening-options {
+    order: 2;
+    flex-basis: 100%;
+    justify-content: center;
+  }
+  .listening-workbench {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .listening-sentences {
+    max-height: 55dvh;
+  }
+  .listening-sentence-editor {
+    margin-left: 10px;
+  }
+  .daily-listening .listening-open-dictation {
+    margin-left: 10px;
+  }
+  .listening-shortcuts {
+    display: none;
+  }
+  .daily-listening .listening-mark {
+    opacity: 0.8;
+  }
 }
