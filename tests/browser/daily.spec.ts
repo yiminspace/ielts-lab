@@ -848,6 +848,30 @@ test.describe("Daily reading allows unanswered questions", () => {
     await aiNotes
       .getByRole("button", { name: "收起反馈", exact: true })
       .click();
+    // A long hint that moves into the closed history must still be expandable.
+    // WebKit/Firefox skip layout for closed <details> content (Chromium still
+    // measures it), so emulate that to catch a measure-once regression.
+    await page.addStyleTag({
+      content:
+        "details.listening-hint-history:not([open]) > :not(summary) { display: none; }",
+    });
+    await panel
+      .getByLabel("第 1 句听写", { exact: true })
+      .fill("Welcome to the");
+    await panel.getByRole("button", { name: "核对听写", exact: true }).click();
+    await expect.poll(() => hintRequests).toBe(3);
+    const history = aiNotes.locator("details.listening-hint-history");
+    await expect(
+      history.getByText("历史提示（2）", { exact: true }),
+    ).toBeVisible();
+    await history.getByText("历史提示（2）", { exact: true }).click();
+    await history
+      .getByRole("button", { name: "展开完整反馈", exact: true })
+      .click();
+    await expect(
+      history.getByRole("button", { name: "收起反馈", exact: true }),
+    ).toHaveAttribute("aria-expanded", "true");
+    await history.getByText("历史提示（2）", { exact: true }).click();
     await panel.getByRole("button", { name: "隐藏原文", exact: true }).click();
     await expect(
       panel.getByRole("button", { name: "播放第 1 句", exact: true }),

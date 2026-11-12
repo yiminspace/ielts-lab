@@ -1045,11 +1045,19 @@ function FeedbackNote({ text }: { text: string }) {
   const body = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
-  // Offer "expand" only when the clamped text is actually cut off.
+  // Offer "expand" only when the clamped text is actually cut off. Re-measure
+  // whenever the box resizes: a note inside a closed <details> measures 0 until
+  // it is opened, and wrapping changes with the panel width.
   useLayoutEffect(() => {
     const node = body.current;
-    if (node && !expanded)
+    if (!node || expanded) return;
+    const measure = () =>
       setOverflows(node.scrollHeight > node.clientHeight + 1);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
   }, [text, expanded]);
   return (
     <div className="listening-feedback">
