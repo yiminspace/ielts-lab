@@ -215,3 +215,20 @@ test("missed segments include wrong, blank and partially right questions", () =>
     [0],
   );
 });
+
+test("matching evidence phrases take precedence over stale sentence numbers", () => {
+  const data = source([2, 3]);
+  data.seconds = 200;
+  data.listenDetail = Array.from(
+    { length: 20 },
+    (_, i) =>
+      `[${String(Math.floor(i / 6)).padStart(2, "0")}:${String((i % 6) * 10).padStart(2, "0")}]Original line ${i + 1}.`,
+  ).join("\n");
+  const answers = JSON.parse(data.questions[0].answerJson);
+  answers[0].positionSentence = "Original line 3.";
+  answers[1].positionSentence = "Original line 18.";
+  data.questions[0].answerJson = JSON.stringify(answers);
+  const { segments } = listeningSegments(data);
+  assert.equal(segments[0].lines.at(-1).text, "Original line 10.");
+  assert.equal(segments[1].lines[0].text, "Original line 11.");
+});

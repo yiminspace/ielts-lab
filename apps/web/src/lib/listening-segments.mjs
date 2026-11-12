@@ -3,21 +3,26 @@ import { resolveSolutionLine } from "./question-review.mjs";
 
 /** Keep every saved evidence hint, including all answers in a multiple-choice row. */
 function evidenceIndices(solution, lines, primary) {
-  const indices = [primary];
-  for (const number of Array.isArray(solution?.sentenceList)
-    ? solution.sentenceList
-    : []) {
-    indices.push(resolveSolutionLine({ sentenceList: [number] }, lines));
-  }
   const phrases =
     typeof solution?.positionSentence === "string"
       ? solution.positionSentence.split(/[;；\n]/)
       : [];
-  for (const phrase of phrases) {
-    if (phrase.trim())
-      indices.push(resolveSolutionLine({ positionSentence: phrase }, lines));
-  }
-  return indices.filter((index) => index >= 0);
+  const matches = phrases
+    .filter((phrase) => phrase.trim())
+    .map((phrase) => resolveSolutionLine({ positionSentence: phrase }, lines))
+    .filter((index) => index >= 0);
+  // Sentence numbers can refer to a different transcript revision. As in the
+  // existing resolver, matching source text takes precedence over stale numbers.
+  if (matches.length) return [primary, ...matches];
+  const numbers = Array.isArray(solution?.sentenceList)
+    ? solution.sentenceList
+    : [];
+  return [
+    primary,
+    ...numbers.map((number) =>
+      resolveSolutionLine({ sentenceList: [number] }, lines),
+    ),
+  ].filter((index) => index >= 0);
 }
 
 /** Use original sentence timestamps and overlapping context around all evidence. */

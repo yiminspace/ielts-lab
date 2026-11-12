@@ -1285,9 +1285,9 @@ test.describe("Daily reading allows unanswered questions", () => {
       single.answerJson = [{ ...original.answerJson[1], correctValue: 0 }];
       item.data.questions = [multi, single];
       const extra = Array.from(
-        { length: 18 },
+        { length: 40 },
         (_, index) =>
-          `[00:${((index + 1) * 0.25).toFixed(2)}]${["Everyone can share an idea about their favourite book.", "You can ask your partner to explain an unfamiliar word.", "The group practises everyday conversations together."][index % 3]}##这里可以交流阅读感受，也可以向伙伴询问不熟悉的词。`,
+          `[00:${((index + 1) * 0.1).toFixed(2)}]${["Everyone can share an idea about their favourite book.", "You can ask your partner to explain an unfamiliar word.", "The group practises everyday conversations together."][index % 3]}##这里可以交流阅读感受，也可以向伙伴询问不熟悉的词。`,
       ).join("\n");
       item.data.listenDetail = item.data.listenDetail.replace(
         "\n",
