@@ -629,7 +629,20 @@ function SegmentPlayer({
                       className="listening-line-play"
                       aria-label={`播放第 ${i + 1} 句`}
                       aria-pressed={sentence === i}
-                      onClick={() => chooseSentence(i)}
+                      onClick={(event) => {
+                        const selection = window.getSelection();
+                        if (
+                          event.detail > 0 &&
+                          selection &&
+                          !selection.isCollapsed &&
+                          selection.rangeCount > 0 &&
+                          selection
+                            .getRangeAt(0)
+                            .intersectsNode(event.currentTarget)
+                        )
+                          return;
+                        chooseSentence(i);
+                      }}
                     >
                       <span className="listening-timestamp">
                         {clock(line.start)}
