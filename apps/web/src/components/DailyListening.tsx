@@ -6,6 +6,21 @@ import type { StudyItem } from "../types";
 import { mediaUrl, RichText, MarkdownText } from "../lib/content";
 import { displayAnswer } from "../lib/questions.mjs";
 import { listeningSegments } from "../lib/listening-segments.mjs";
+import {
+  ChevronLeft,
+  ChevronRight,
+  EyeOff,
+  Languages,
+  Pause,
+  PenLine,
+  Play,
+  Repeat,
+  RotateCcw,
+  SkipBack,
+  SkipForward,
+  Star,
+  X,
+} from "lucide-react";
 
 const clock = (seconds: number) =>
   `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
@@ -62,6 +77,7 @@ function SegmentPlayer({
   send,
 }: { item: StudyItem } & Omit<ListeningProps, "itemId">) {
   const audio = useRef<HTMLAudioElement>(null);
+  const list = useRef<HTMLOListElement>(null);
   const repeatTimer = useRef<number | undefined>(undefined);
   const [gap, setGap] = useState(0);
   const [duration, setDuration] = useState(Number(item.data.seconds) || 0);
@@ -102,16 +118,22 @@ function SegmentPlayer({
   );
   const segment = segments[index];
   const src = mediaUrl(item, item.data.audioUrl);
-  const activeLine = sentence === null ? null : segment?.lines[sentence];
-  const start = range?.start ?? activeLine?.start ?? segment?.start ?? 0;
-  const end =
-    range?.end ??
-    (activeLine
-      ? Math.min(activeLine.end, segment.end ?? (duration || activeLine.end))
-      : segment?.end);
+  const lines = segment?.lines ?? [];
+  const activeLine = sentence === null ? null : lines[sentence];
+  const segmentEnd = segment?.end ?? (duration || undefined);
+  const scopeStart = activeLine?.start ?? segment?.start ?? 0;
+  const scopeEnd = activeLine
+    ? Math.min(activeLine.end, segmentEnd ?? activeLine.end)
+    : segmentEnd;
+  const start = range?.start ?? scopeStart;
+  const end = range?.end ?? scopeEnd;
+  /** The line under the playhead, used for highlighting and sentence stepping. */
+  const playhead = lines.findIndex(
+    (line) => currentTime >= line.start && currentTime < line.end,
+  );
+  const hasTranslation = lines.some((line) => line.translation);
   const noteKey = `segment-${segment?.start}`;
-  function saveNote(value: string, key = noteKey) {
-    const next = { ...notes, [key]: value };
+  function persist(next: Record<string, string>) {
     setNotes(next);
     try {
       localStorage.setItem(`ielts-listening:${item.id}`, JSON.stringify(next));
@@ -119,6 +141,13 @@ function SegmentPlayer({
     } catch {
       setSaveStatus("保存失败，请复制笔记后再离开页面");
     }
+  }
+  function saveNote(value: string, key = noteKey) {
+    persist({ ...notes, [key]: value });
+  }
+  function seek(time: number) {
+    if (audio.current) audio.current.currentTime = time;
+    setCurrentTime(time);
   }
   function pause() {
     window.clearTimeout(repeatTimer.current);
@@ -131,15 +160,9 @@ function SegmentPlayer({
   }
   function stopAtEnd() {
     const player = audio.current;
-    if (
-      player &&
-      end !== null &&
-      end !== undefined &&
-      player.currentTime >= end
-    ) {
-      if (loop) {
-        repeat();
-      } else {
+    if (player && end !== undefined && player.currentTime >= end) {
+      if (loop) repeat();
+      else {
         player.pause();
         player.currentTime = end;
       }
@@ -157,6 +180,20 @@ function SegmentPlayer({
       player?.pause();
     };
   }, []);
+  // Follow the playhead inside the transcript list without moving the page.
+  useEffect(() => {
+    const container = list.current;
+    if (!playing || !container || playhead < 0) return;
+    const row = container.children[playhead] as HTMLElement | undefined;
+    if (!row) return;
+    const top = row.offsetTop;
+    const bottom = top + row.offsetHeight;
+    if (
+      top < container.scrollTop ||
+      bottom > container.scrollTop + container.clientHeight
+    )
+      container.scrollTo({ top: Math.max(0, top - 24), behavior: "smooth" });
+  }, [playhead, playing]);
   async function play(restart: boolean, from = start) {
     window.clearTimeout(repeatTimer.current);
     const player = audio.current;
@@ -165,7 +202,7 @@ function SegmentPlayer({
     if (
       restart ||
       player.currentTime < start ||
-      (end != null && player.currentTime >= end)
+      (end !== undefined && player.currentTime >= end)
     )
       player.currentTime = from;
     player.playbackRate = speed;
@@ -177,22 +214,46 @@ function SegmentPlayer({
   }
   function select(next: number) {
     pause();
-    setPlaying(false);
     setRange(null);
     setIndex(next);
     setSentence(null);
     setExpanded(null);
-    setCurrentTime(segments[next].start);
     setError("");
-    if (audio.current) audio.current.currentTime = segments[next].start;
+    seek(segments[next].start);
   }
-  function chooseSentence(next: number) {
+  function chooseSentence(next: number, autoplay = true) {
     pause();
     setRange(null);
     setSentence(next);
     setExpanded(next);
-    setCurrentTime(segment.lines[next].start);
-    void play(true, segment.lines[next].start);
+    seek(lines[next].start);
+    if (autoplay) void play(true, lines[next].start);
+  }
+  function wholeSegment() {
+    pause();
+    setSentence(null);
+    setExpanded(null);
+    setRange(null);
+    seek(segment.start);
+  }
+  /** Step from the chosen sentence, or from the playhead when the whole segment is in scope. */
+  const base = sentence ?? playhead;
+  const canPrevious = base > 0;
+  const canNext = base < lines.length - 1;
+  function step(delta: number) {
+    const next = Math.min(
+      lines.length - 1,
+      Math.max(0, (base < 0 ? (delta > 0 ? -1 : 0) : base) + delta),
+    );
+    chooseSentence(next);
+  }
+  function abRepeat() {
+    const time = audio.current?.currentTime ?? currentTime;
+    if (!range) setRange({ start: Math.max(scopeStart, time) });
+    else if (range.end === undefined && time > range.start + 0.2) {
+      setRange({ start: range.start, end: time });
+      setLoop(true);
+    }
   }
   useEffect(() => {
     function shortcut(event: KeyboardEvent) {
@@ -211,18 +272,16 @@ function SegmentPlayer({
         if (playing) pause();
         else void play(false);
       }
-      if (event.key.toLowerCase() === "r") void play(true);
-      if (event.key === "ArrowLeft" && sentence !== null && sentence > 0) {
+      const key = event.key.toLowerCase();
+      if (key === "r") void play(true);
+      if (key === "l") setLoop((value) => !value);
+      if (event.key === "ArrowLeft" && canPrevious) {
         event.preventDefault();
-        chooseSentence(sentence - 1);
+        step(-1);
       }
-      if (
-        event.key === "ArrowRight" &&
-        sentence !== null &&
-        sentence < segment.lines.length - 1
-      ) {
+      if (event.key === "ArrowRight" && canNext) {
         event.preventDefault();
-        chooseSentence(sentence + 1);
+        step(1);
       }
     }
     window.addEventListener("keydown", shortcut);
@@ -234,53 +293,58 @@ function SegmentPlayer({
         {segmentError || "这份材料没有可播放的音频。"}
       </p>
     );
-  const label = segment.entries
-    .map(({ row }) =>
-      row.number === row.endNumber
-        ? `${row.number}`
-        : `${row.number}–${row.endNumber}`,
-    )
-    .join("、");
+  const numbers = (part: (typeof segments)[number]) =>
+    part.entries
+      .map(({ row }) =>
+        row.number === row.endNumber
+          ? `${row.number}`
+          : `${row.number}–${row.endNumber}`,
+      )
+      .join("、");
+  const total = Math.max(0.01, (end ?? duration) - start);
+  const percent = (time: number) =>
+    `${Math.min(100, Math.max(0, ((time - start) / total) * 100))}%`;
+  const scopeName = sentence === null ? "本段" : "本句";
   return (
     <div className="daily-listening">
-      <div className="daily-listening-nav listening-segment-nav">
-        <h2>第 {label} 题</h2>
-        <button disabled={index === 0} onClick={() => select(index - 1)}>
-          上一段
-        </button>
-        <label>
-          <select
-            aria-label="选择听力段落"
-            value={index}
-            onChange={(event) => select(Number(event.target.value))}
-          >
-            {segments.map((part, i) => (
-              <option key={i} value={i}>
-                第{" "}
-                {part.entries
-                  .map(({ row }) =>
-                    row.number === row.endNumber
-                      ? row.number
-                      : `${row.number}–${row.endNumber}`,
-                  )
-                  .join("、")}{" "}
-                题
-              </option>
-            ))}
-          </select>
-        </label>
+      <nav className="listening-segment-nav" aria-label="听力段落">
+        <h2>第 {numbers(segment)} 题</h2>
         <button
+          className="listening-icon"
+          aria-label="上一段"
+          title="上一段"
+          disabled={index === 0}
+          onClick={() => select(index - 1)}
+        >
+          <ChevronLeft size={16} />
+        </button>
+        <ol className="listening-segment-list">
+          {segments.map((part, i) => (
+            <li key={i}>
+              <button
+                aria-label={`第 ${numbers(part)} 题`}
+                aria-current={i === index ? "step" : undefined}
+                onClick={() => i !== index && select(i)}
+              >
+                {numbers(part)}
+              </button>
+            </li>
+          ))}
+        </ol>
+        <button
+          className="listening-icon"
+          aria-label="下一段"
+          title="下一段"
           disabled={index === segments.length - 1}
           onClick={() => select(index + 1)}
         >
-          下一段
+          <ChevronRight size={16} />
         </button>
         <p className="listening-segment-meta">
-          {clock(segment.start)} →{" "}
-          {segment.end === null ? "音频结束" : clock(segment.end)} · 第{" "}
-          {index + 1} / {segments.length} 段
+          第 {index + 1} / {segments.length} 段 · {clock(segment.start)}–
+          {segment.end === null ? "结束" : clock(segment.end)}
         </p>
-      </div>
+      </nav>
       <audio
         ref={audio}
         src={src}
@@ -304,39 +368,176 @@ function SegmentPlayer({
           setError("音频加载失败，请重新打开分段听。");
         }}
       />
-      <div className="listening-player">
-        <div className="daily-listening-nav">
-          <button onClick={() => (playing ? pause() : void play(false))}>
-            {playing ? "暂停" : sentence === null ? "播放本段" : "播放当前句"}
-          </button>
-          <button onClick={() => void play(true)}>
-            {sentence === null ? "重听本段" : "重听当前句"}
+      <div className="listening-player" aria-label="播放控制" role="group">
+        <div className="listening-transport">
+          <button
+            className="listening-icon"
+            aria-label="上一句"
+            title="上一句（←）"
+            disabled={!canPrevious}
+            onClick={() => step(-1)}
+          >
+            <SkipBack size={16} />
           </button>
           <button
-            disabled={sentence === null || sentence === 0}
-            onClick={() => chooseSentence(sentence! - 1)}
+            className="listening-play"
+            aria-label={playing ? "暂停" : `播放${scopeName}`}
+            title="播放 / 暂停（空格）"
+            onClick={() => (playing ? pause() : void play(false))}
           >
-            上一句
+            {playing ? <Pause size={18} /> : <Play size={18} />}
           </button>
           <button
-            disabled={sentence === null || sentence >= segment.lines.length - 1}
-            onClick={() => chooseSentence(sentence! + 1)}
+            className="listening-icon"
+            aria-label="下一句"
+            title="下一句（→）"
+            disabled={!canNext}
+            onClick={() => step(1)}
           >
-            下一句
+            <SkipForward size={16} />
           </button>
-          <label>
+          <button
+            className="listening-icon"
+            aria-label={`重听${scopeName}`}
+            title={`从头重听${scopeName}（R）`}
+            onClick={() => void play(true)}
+          >
+            <RotateCcw size={16} />
+          </button>
+        </div>
+        <div className="listening-seek">
+          <div className="listening-track">
+            {range && (
+              <span
+                className="listening-track-range"
+                style={{
+                  left: percent(range.start),
+                  right:
+                    range.end === undefined
+                      ? "0%"
+                      : `calc(100% - ${percent(range.end)})`,
+                }}
+              />
+            )}
+            {sentence === null &&
+              !range &&
+              lines
+                .filter((line) => line.start > start)
+                .map((line) => (
+                  <span
+                    key={line.start}
+                    className="listening-track-tick"
+                    style={{ left: percent(line.start) }}
+                  />
+                ))}
             <input
-              type="checkbox"
-              checked={loop}
-              onChange={(event) => {
-                pause();
-                setLoop(event.target.checked);
-              }}
+              type="range"
+              aria-label="播放进度"
+              min={start}
+              max={end ?? duration}
+              step="0.01"
+              value={Math.min(end ?? duration, Math.max(start, currentTime))}
+              onChange={(event) => seek(Number(event.target.value))}
             />
-            循环播放
-          </label>
-          <label>
-            语速{" "}
+          </div>
+          <span className="listening-time">
+            {clock(currentTime)} / {clock(end ?? duration)}
+          </span>
+        </div>
+        <div className="listening-options">
+          <div
+            className="listening-segmented"
+            role="radiogroup"
+            aria-label="播放范围"
+          >
+            <button
+              role="radio"
+              aria-checked={sentence === null}
+              onClick={() => sentence !== null && wholeSegment()}
+            >
+              整段
+            </button>
+            <button
+              role="radio"
+              aria-checked={sentence !== null}
+              title="只播放当前句；也可直接点原文中的句子"
+              onClick={() =>
+                sentence === null &&
+                chooseSentence(Math.max(0, playhead), false)
+              }
+            >
+              单句
+            </button>
+          </div>
+          <button
+            className="listening-toggle"
+            aria-pressed={loop}
+            title="循环播放当前范围（L）"
+            onClick={() => {
+              if (loop) window.clearTimeout(repeatTimer.current);
+              setLoop(!loop);
+            }}
+          >
+            <Repeat size={15} />
+            循环
+          </button>
+          {loop && (
+            <label className="listening-inline-select">
+              间隔
+              <select
+                aria-label="循环间隔"
+                value={gap}
+                onChange={(event) => setGap(Number(event.target.value))}
+              >
+                {[0, 1, 2, 3].map((seconds) => (
+                  <option key={seconds} value={seconds}>
+                    {seconds} 秒
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {range?.end === undefined ? (
+            <span className="listening-ab">
+              <button
+                className="listening-toggle"
+                aria-pressed={!!range}
+                title={
+                  range
+                    ? "播放到想结束的位置后点击，设为复读终点 B"
+                    : "在当前播放位置设复读起点 A"
+                }
+                disabled={!!range && currentTime <= range.start + 0.2}
+                onClick={abRepeat}
+              >
+                {range ? `A ${clock(range.start)} · 设 B 点` : "A-B 复读"}
+              </button>
+              {range && (
+                <button
+                  className="listening-icon"
+                  aria-label="清除复读区间"
+                  title="清除复读区间"
+                  onClick={() => setRange(null)}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </span>
+          ) : (
+            <span className="listening-ab is-set">
+              A-B {clock(range.start)}–{clock(range.end)}
+              <button
+                className="listening-icon"
+                aria-label="清除复读区间"
+                title="清除复读区间"
+                onClick={() => setRange(null)}
+              >
+                <X size={14} />
+              </button>
+            </span>
+          )}
+          <label className="listening-inline-select">
+            语速
             <select
               aria-label="分段听语速"
               value={speed}
@@ -354,75 +555,6 @@ function SegmentPlayer({
             </select>
           </label>
         </div>
-        <label className="listening-seek">
-          播放进度
-          <input
-            type="range"
-            min={start}
-            max={end ?? duration}
-            step="0.01"
-            value={Math.min(end ?? duration, Math.max(start, currentTime))}
-            onChange={(event) => {
-              const time = Number(event.target.value);
-              if (audio.current) audio.current.currentTime = time;
-              setCurrentTime(time);
-            }}
-          />
-          <span>
-            {clock(currentTime)} / {clock(end ?? duration)}
-          </span>
-        </label>
-        <details className="listening-range">
-          <summary>播放设置</summary>
-          <p className="listening-settings-heading">局部循环</p>
-          <label>
-            循环间隔
-            <select
-              aria-label="循环间隔"
-              value={gap}
-              onChange={(event) => {
-                pause();
-                setGap(Number(event.target.value));
-              }}
-            >
-              {[0, 1, 2, 3].map((seconds) => (
-                <option key={seconds} value={seconds}>
-                  {seconds} 秒
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="daily-listening-nav">
-            <button
-              onClick={() =>
-                setRange({ start: audio.current?.currentTime ?? start })
-              }
-            >
-              设为循环起点
-            </button>
-            <button
-              disabled={!range || currentTime <= range.start}
-              onClick={() => {
-                setRange({ start: range!.start, end: currentTime });
-                setLoop(true);
-              }}
-            >
-              设为循环终点
-            </button>
-            {range && (
-              <button onClick={() => setRange(null)}>清除循环范围</button>
-            )}
-            {range && (
-              <span>
-                {clock(range.start)} 至{" "}
-                {range.end === undefined ? "待设置终点" : clock(range.end)}
-              </span>
-            )}
-          </div>
-          <p className="listening-shortcuts">
-            空格播放 / 暂停 · R 重听 · ← → 切句
-          </p>{" "}
-        </details>
       </div>
       {error && <p role="alert">{error}</p>}
       <div className="listening-workbench">
@@ -430,105 +562,124 @@ function SegmentPlayer({
           <div className="listening-transcript-header">
             <h3>本段原文</h3>
             <button
-              onClick={() => {
-                pause();
-                setSentence(null);
-                setExpanded(null);
-                setRange(null);
-                setCurrentTime(segment.start);
-                if (audio.current) audio.current.currentTime = segment.start;
-              }}
+              className="listening-toggle"
+              aria-pressed={hidden}
+              title="盲听：隐藏原文，只保留句子序号"
+              onClick={() => setHidden(!hidden)}
             >
-              回到整段
+              <EyeOff size={15} />
+              隐藏原文
             </button>
-            <button onClick={() => setHidden(!hidden)}>
-              {hidden ? "显示原文" : "隐藏原文"}
-            </button>
-            <label>
-              <input
-                type="checkbox"
-                checked={translation}
-                onChange={(event) => setTranslation(event.target.checked)}
-              />
-              译文
-            </label>
-          </div>
-          <ol className="listening-sentences">
-            {segment.lines.map((line, i) => (
-              <li
-                key={line.start}
-                className={
-                  sentence === i ||
-                  (playing &&
-                    currentTime >= line.start &&
-                    currentTime < line.end)
-                    ? "is-current"
-                    : ""
-                }
+            {hasTranslation && (
+              <button
+                className="listening-toggle"
+                aria-pressed={translation}
+                disabled={hidden}
+                onClick={() => setTranslation(!translation)}
               >
-                <button
-                  aria-label={`播放第 ${i + 1} 句`}
-                  aria-pressed={sentence === i}
-                  onClick={() => chooseSentence(i)}
+                <Languages size={15} />
+                显示译文
+              </button>
+            )}
+          </div>
+          <ol className="listening-sentences" ref={list}>
+            {lines.map((line, i) => {
+              const dictation = notes[`dictation-${line.start}`] || "";
+              const marked = notes[`mark-${line.start}`] === "yes";
+              return (
+                <li
+                  key={line.start}
+                  className={[
+                    sentence === i ? "is-selected" : "",
+                    playing && playhead === i ? "is-current" : "",
+                  ].join(" ")}
                 >
-                  <span className="listening-timestamp">
-                    {clock(line.start)}
-                  </span>
-                  <span>
-                    {hidden ? `第 ${i + 1} 句 · 点击播放` : line.text}
-                    {!hidden && translation && line.translation && (
-                      <small>{line.translation}</small>
-                    )}
-                  </span>
-                </button>
-                <SentencePractice
-                  line={line}
-                  number={i + 1}
-                  expanded={expanded === i}
-                  showReference={!hidden}
-                  text={notes[`dictation-${line.start}`] || ""}
-                  checked={notes[`checked-${line.start}`] || ""}
-                  checks={(lesson.dictationChecks || []).filter(
-                    (entry) =>
-                      entry.start === line.start &&
-                      entry.reference === line.text,
+                  <div className="listening-line">
+                    <button
+                      className="listening-line-play"
+                      aria-label={`播放第 ${i + 1} 句`}
+                      aria-pressed={sentence === i}
+                      onClick={() => chooseSentence(i)}
+                    >
+                      <span className="listening-timestamp">
+                        {clock(line.start)}
+                      </span>
+                      <span className="listening-line-text">
+                        {hidden ? (
+                          <span className="listening-line-hidden">
+                            第 {i + 1} 句
+                          </span>
+                        ) : (
+                          line.text
+                        )}
+                        {!hidden && translation && line.translation && (
+                          <small>{line.translation}</small>
+                        )}
+                      </span>
+                    </button>
+                    <span className="listening-line-tools">
+                      {dictation && expanded !== i && (
+                        <span
+                          className="listening-badge"
+                          title={`我的听写：${dictation}`}
+                        >
+                          已听写
+                        </span>
+                      )}
+                      <button
+                        className="listening-mark"
+                        aria-label={`第 ${i + 1} 句还需练`}
+                        aria-pressed={marked}
+                        title={marked ? "取消“还需练”标记" : "标记为还需练"}
+                        onClick={() =>
+                          persist({
+                            ...notes,
+                            [`mark-${line.start}`]: marked ? "" : "yes",
+                          })
+                        }
+                      >
+                        <Star size={15} />
+                      </button>
+                    </span>
+                  </div>
+                  {expanded === i ? (
+                    <SentencePractice
+                      line={line}
+                      number={i + 1}
+                      text={dictation}
+                      checked={notes[`checked-${line.start}`] || ""}
+                      checks={(lesson.dictationChecks || []).filter(
+                        (entry) =>
+                          entry.start === line.start &&
+                          entry.reference === line.text,
+                      )}
+                      disabled={disabled}
+                      saveStatus={saveStatus}
+                      available={lesson.capabilities?.runtime !== false}
+                      save={(key, value) => saveNote(value, key)}
+                      check={(text) =>
+                        send("dictation", { start: line.start, text })
+                      }
+                      collapse={() => setExpanded(null)}
+                    />
+                  ) : (
+                    sentence === i && (
+                      <button
+                        className="listening-open-dictation"
+                        onClick={() => setExpanded(i)}
+                      >
+                        <PenLine size={14} />
+                        听写这一句
+                      </button>
+                    )
                   )}
-                  disabled={disabled}
-                  saveStatus={saveStatus}
-                  available={lesson.capabilities?.runtime !== false}
-                  save={(key, value) => saveNote(value, key)}
-                  check={(text) =>
-                    send("dictation", { start: line.start, text })
-                  }
-                  collapse={() => setExpanded(null)}
-                />
-                <button
-                  className="listening-mark"
-                  aria-pressed={notes[`mark-${line.start}`] === "yes"}
-                  onClick={() => {
-                    const next = {
-                      ...notes,
-                      [`mark-${line.start}`]:
-                        notes[`mark-${line.start}`] === "yes" ? "" : "yes",
-                    };
-                    setNotes(next);
-                    try {
-                      localStorage.setItem(
-                        `ielts-listening:${item.id}`,
-                        JSON.stringify(next),
-                      );
-                    } catch {
-                      setSaveStatus("保存失败，请复制笔记后再离开页面");
-                    }
-                  }}
-                >
-                  {notes[`mark-${line.start}`] === "yes"
-                    ? "已标记 · 还需练"
-                    : "标记还需练"}
-                </button>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ol>
+          <p className="listening-shortcuts">
+            点句子单句播放 · 空格 播放/暂停 · R 重听 · ← → 切句 · L 循环
+          </p>
         </section>
         <section className="listening-practice" aria-label="听写与题目">
           <details className="listening-questions" open>
@@ -560,7 +711,7 @@ function SegmentPlayer({
                       onChange={(value) => saveNote(value, `answer-${row.id}`)}
                     />
                   )}
-                  <details>
+                  <details className="listening-answer">
                     <summary>查看第 {row.number} 题答案</summary>
                     <p>{displayAnswer(row)}</p>
                   </details>
@@ -577,10 +728,10 @@ function SegmentPlayer({
               onChange={(event) => saveNote(event.target.value)}
               placeholder="记录整段理解…"
             />
-            {segment.lines.some((line) => notes[String(line.start)]) && (
+            {lines.some((line) => notes[String(line.start)]) && (
               <details className="listening-legacy-notes">
                 <summary>以往句子笔记</summary>
-                {segment.lines
+                {lines
                   .filter((line) => notes[String(line.start)])
                   .map((line) => (
                     <p key={line.start}>
@@ -660,8 +811,6 @@ function ListeningChoices({
 function SentencePractice({
   line,
   number,
-  expanded,
-  showReference,
   text,
   checked,
   checks,
@@ -674,8 +823,6 @@ function SentencePractice({
 }: {
   line: { start: number; text: string };
   number: number;
-  expanded: boolean;
-  showReference: boolean;
   text: string;
   checked: string;
   checks: NonNullable<DailyLesson["dictationChecks"]>;
@@ -688,9 +835,6 @@ function SentencePractice({
 }) {
   const [submitting, setSubmitting] = useState(false);
   const [hintOpen, setHintOpen] = useState(false);
-  useEffect(() => {
-    if (!expanded) setHintOpen(false);
-  }, [expanded]);
   const [error, setError] = useState("");
   let snapshot: { text: string; reference: string } | null = null;
   try {
@@ -728,17 +872,14 @@ function SentencePractice({
       setSubmitting(false);
     }
   }
-  if (!expanded)
-    return (
-      <div className="listening-sentence-preview">
-        {text && <p>我的听写　{text}</p>}
-        {latest?.feedback && <small>已有重听提示</small>}
-        {!text && !latest && <p>点击句子开始听写</p>}
-      </div>
-    );
   return (
     <div className="listening-sentence-editor">
-      <label htmlFor={`${id}-dictation`}>我的听写</label>
+      <div className="listening-editor-head">
+        <label htmlFor={`${id}-dictation`}>听写第 {number} 句</label>
+        <button className="listening-text-button" onClick={collapse}>
+          收起听写
+        </button>
+      </div>
       <textarea
         id={`${id}-dictation`}
         aria-label={`第 ${number} 句听写`}
@@ -750,7 +891,11 @@ function SentencePractice({
         placeholder="写下听到的内容…"
       />
       <div className="listening-check-actions">
-        <button disabled={!text.trim()} onClick={verify}>
+        <button
+          className="listening-primary"
+          disabled={!text.trim()}
+          onClick={verify}
+        >
           核对听写
         </button>
         <button
@@ -763,9 +908,8 @@ function SentencePractice({
             ? "正在生成提示…"
             : "给我重听提示"}
         </button>
-        <button onClick={collapse}>收起本句</button>
       </div>
-      {showReference && typeof comparison === "string" && comparison.trim() && (
+      {typeof comparison === "string" && comparison.trim() && (
         <div className="listening-diff" aria-label={`第 ${number} 句原文对照`}>
           <p>
             原文对照 <small>绿色为漏词，删除线为多写或替换</small>
