@@ -153,6 +153,11 @@ function SegmentPlayer({
     window.clearTimeout(repeatTimer.current);
     audio.current?.pause();
   }
+  /** Turning looping off also cancels a repeat already waiting out the gap. */
+  function toggleLoop() {
+    if (loop) window.clearTimeout(repeatTimer.current);
+    setLoop(!loop);
+  }
   function repeat() {
     pause();
     if (audio.current) audio.current.currentTime = start;
@@ -274,7 +279,7 @@ function SegmentPlayer({
       }
       const key = event.key.toLowerCase();
       if (key === "r") void play(true);
-      if (key === "l") setLoop((value) => !value);
+      if (key === "l") toggleLoop();
       if (event.key === "ArrowLeft" && canPrevious) {
         event.preventDefault();
         step(-1);
@@ -473,10 +478,7 @@ function SegmentPlayer({
             className="listening-toggle"
             aria-pressed={loop}
             title="循环播放当前范围（L）"
-            onClick={() => {
-              if (loop) window.clearTimeout(repeatTimer.current);
-              setLoop(!loop);
-            }}
+            onClick={toggleLoop}
           >
             <Repeat size={15} />
             循环

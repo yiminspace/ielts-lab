@@ -903,6 +903,23 @@ test.describe("Daily reading allows unanswered questions", () => {
       .poll(() => player.evaluate((node: HTMLAudioElement) => node.paused))
       .toBe(false);
     await panel.getByRole("button", { name: "暂停", exact: true }).click();
+    // L turns looping off and cancels a repeat waiting out the interval.
+    await panel.getByRole("button", { name: "播放本句", exact: true }).click();
+    await player.evaluate((node: HTMLAudioElement) => {
+      node.currentTime = 0.81;
+    });
+    await expect
+      .poll(() => player.evaluate((node: HTMLAudioElement) => node.paused))
+      .toBe(true);
+    await page.keyboard.press("l");
+    await expect(
+      panel.getByRole("button", { name: "循环", exact: true }),
+    ).toHaveAttribute("aria-pressed", "false");
+    await page.waitForTimeout(1500);
+    expect(await player.evaluate((node: HTMLAudioElement) => node.paused)).toBe(
+      true,
+    );
+    await page.keyboard.press("l");
     await panel
       .getByRole("button", { name: "清除复读区间", exact: true })
       .click();
