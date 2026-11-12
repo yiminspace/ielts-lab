@@ -1,4 +1,4 @@
-import { buildGroups, parseTranscript } from "./questions.mjs";
+import { assessRow, buildGroups, parseTranscript } from "./questions.mjs";
 import { resolveSolutionLine } from "./question-review.mjs";
 
 /** Keep every saved evidence hint, including all answers in a multiple-choice row. */
@@ -95,4 +95,23 @@ export function listeningSegments(data, duration = Number(data.seconds) || 0) {
       };
     }),
   };
+}
+
+/**
+ * Answer-sentence positions of segments with any question the attempt did not
+ * fully earn (wrong, blank or partially right). Manual-review rows are skipped.
+ */
+export function missedSegmentPositions(segments, answers) {
+  if (!answers) return new Set();
+  return new Set(
+    segments
+      .filter((segment) =>
+        segment.entries.some(({ row }) =>
+          ["incorrect", "blank", "partial"].includes(
+            assessRow(row, answers[row.id]).status,
+          ),
+        ),
+      )
+      .map((segment) => segment.position),
+  );
 }

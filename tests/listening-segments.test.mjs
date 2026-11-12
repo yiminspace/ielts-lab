@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { listeningSegments } from "../apps/web/src/lib/listening-segments.mjs";
+import {
+  listeningSegments,
+  missedSegmentPositions,
+} from "../apps/web/src/lib/listening-segments.mjs";
 
 function source(positions = [2, 3, 4]) {
   return {
@@ -147,4 +150,68 @@ test("a blank timing marker ends the last context sentence before a long pause",
   const { segments } = listeningSegments(data);
   assert.equal(segments[0].lines.at(-1).text, "Final qualification");
   assert.equal(segments[0].end, 25);
+});
+
+test("missed segments include wrong, blank and partially right questions", () => {
+  const data = {
+    seconds: 40,
+    listenDetail:
+      "[00:00]Introduction\n[00:05]First answer\n[00:15]Second answer\n[00:25]Third answer\n[00:35]Closing",
+    questions: [
+      {
+        questionJson: JSON.stringify({
+          questionType: 0,
+          questionNum: 2,
+          startIndex: 1,
+        }),
+        answerJson: JSON.stringify(
+          [1, 2].map((position) => ({
+            correctValue: "original",
+            sentenceList: [position],
+          })),
+        ),
+      },
+      {
+        questionJson: JSON.stringify({
+          questionType: "2",
+          questionNum: 2,
+          startIndex: 3,
+          endIndex: 4,
+          questions: [
+            {
+              content: "Choose two",
+              // For multi-select, `number` is how many options to choose.
+              number: 2,
+              options: Array.from({ length: 4 }, (_, i) => ({
+                content: `Example ${i}`,
+              })),
+            },
+          ],
+        }),
+        answerJson: JSON.stringify([
+          { correctValue: [1, 3], sentenceList: [3] },
+        ]),
+      },
+    ],
+  };
+  const { segments, error } = listeningSegments(data);
+  assert.equal(error, "");
+  const [first, second, choice] = segments.flatMap(({ entries }) =>
+    entries.map(({ row }) => row.id),
+  );
+  const missed = (answers) => [...missedSegmentPositions(segments, answers)];
+  assert.deepEqual(missed(undefined), []);
+  assert.deepEqual(
+    missed({ [first]: "original", [second]: "original", [choice]: ["3", "1"] }),
+    [],
+  );
+  // Second left blank, multi-select only half right.
+  assert.deepEqual(
+    missed({ [first]: "original", [choice]: ["1", "2"] }),
+    [5, 15],
+  );
+  assert.deepEqual(
+    missed({ [first]: "wrong", [second]: "original", [choice]: ["3", "1"] }),
+    [0],
+  );
 });

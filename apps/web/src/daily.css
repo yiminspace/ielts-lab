@@ -608,8 +608,32 @@
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
+/* One disclosure affordance for every <details>: a chevron that points right
+   while collapsed and rotates down once open (replaces the native triangles). */
 .daily-listening details > summary {
   cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.daily-listening details > summary::-webkit-details-marker {
+  display: none;
+}
+.daily-listening details > summary::before {
+  content: "";
+  flex-shrink: 0;
+  width: 5px;
+  height: 5px;
+  margin: 0 2px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+  opacity: 0.7;
+}
+.daily-listening details[open] > summary::before {
+  transform: rotate(45deg);
 }
 .daily-listening .listening-icon {
   width: 34px;
@@ -664,6 +688,7 @@
   display: none;
 }
 .daily-listening .listening-segment-list button {
+  position: relative;
   min-width: 44px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -673,6 +698,20 @@
   content: "Q";
   opacity: 0.6;
   margin-right: -3px;
+}
+/* Segments whose question was missed: accent dot until the answer sentence is dictated. */
+.daily-listening .listening-segment-list button[data-dictation]::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ls-accent);
+}
+.daily-listening .listening-segment-list button[data-dictation="done"]::after {
+  background: var(--green);
 }
 .daily-listening .listening-segment-list button[aria-current="step"] {
   background: var(--ink);
@@ -936,6 +975,10 @@
   padding: 1px 6px;
   white-space: nowrap;
 }
+.listening-badge.is-suggested {
+  color: var(--ls-accent-text);
+  background: var(--ls-accent-soft);
+}
 .daily-listening .listening-line-tool {
   width: 30px;
   min-height: 30px;
@@ -1089,8 +1132,8 @@
 .listening-hint-history {
   font-size: 12px;
 }
-.listening-hint-history > summary {
-  display: inline;
+.daily-listening .listening-hint-history > summary {
+  display: inline-flex;
   color: var(--muted);
 }
 .listening-hint-history article {
