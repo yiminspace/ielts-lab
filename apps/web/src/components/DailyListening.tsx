@@ -4,7 +4,7 @@ import { dictationDiff } from "../lib/dictation-diff.mjs";
 import type { DailyLesson } from "../lib/daily";
 import type { StudyItem } from "../types";
 import { mediaUrl, RichText, MarkdownText } from "../lib/content";
-import { displayAnswer } from "../lib/questions.mjs";
+import { assessRow, displayAnswer } from "../lib/questions.mjs";
 import { useProgress } from "../lib/progress";
 import {
   listeningSegments,
