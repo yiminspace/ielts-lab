@@ -5,7 +5,11 @@ import type { DailyLesson } from "../lib/daily";
 import type { StudyItem } from "../types";
 import { mediaUrl, RichText, MarkdownText } from "../lib/content";
 import { assessRow, displayAnswer } from "../lib/questions.mjs";
-import { listeningSegments } from "../lib/listening-segments.mjs";
+import { useProgress } from "../lib/progress";
+import {
+  listeningSegments,
+  missedSegmentPositions,
+} from "../lib/listening-segments.mjs";
 import {
   ChevronLeft,
   ChevronRight,
@@ -118,6 +122,15 @@ function SegmentPlayer({
     [item.data, duration],
   );
   const segment = segments[index];
+  // Suggest dictating the answer sentence of every question the source attempt
+  // got wrong or left blank, so practice focuses on what was actually missed.
+  const attemptAnswers = useProgress().attempts.find(
+    (attempt) => attempt.id === lesson.attemptId,
+  )?.answers;
+  const missed = useMemo(
+    () => missedSegmentPositions(segments, attemptAnswers),
+    [attemptAnswers, segments],
+  );
   const src = mediaUrl(item, item.data.audioUrl);
   const lines = segment?.lines ?? [];
   const activeLine = sentence === null ? null : lines[sentence];
@@ -214,8 +227,10 @@ function SegmentPlayer({
     player.playbackRate = speed;
     try {
       await player.play();
-    } catch {
-      setError("播放未能启动，请重试。");
+    } catch (reason) {
+      // A pause or seek right after play() aborts it on purpose; not a failure.
+      if ((reason as Error)?.name !== "AbortError")
+        setError("播放未能启动，请重试。");
     }
   }
   function select(next: number) {
@@ -334,6 +349,17 @@ function SegmentPlayer({
           : `${row.number}–${row.endNumber}`,
       )
       .join("、");
+  /** Whether the suggested sentence at `position` has a checked dictation. */
+  const dictated = (part: (typeof segments)[number]) => {
+    const line = part.lines.find((entry) => entry.start === part.position);
+    try {
+      const checked = JSON.parse(notes[`checked-${part.position}`] || "null");
+      return !!line && checked?.reference === line.text;
+    } catch {
+      return false;
+    }
+  };
+  const suggestedParts = segments.filter((part) => missed.has(part.position));
   const total = Math.max(0.01, (end ?? duration) - start);
   const percent = (time: number) =>
     `${Math.min(100, Math.max(0, ((time - start) / total) * 100))}%`;
@@ -357,6 +383,20 @@ function SegmentPlayer({
               <button
                 aria-label={`第 ${numbers(part)} 题`}
                 aria-current={i === index ? "step" : undefined}
+                data-dictation={
+                  missed.has(part.position)
+                    ? dictated(part)
+                      ? "done"
+                      : "todo"
+                    : undefined
+                }
+                title={
+                  missed.has(part.position)
+                    ? dictated(part)
+                      ? "错题答案句已听写"
+                      : "答错或未答，建议听写答案句"
+                    : undefined
+                }
                 onClick={() => i !== index && select(i)}
               >
                 {numbers(part)}
@@ -376,6 +416,13 @@ function SegmentPlayer({
         <p className="listening-segment-meta">
           第 {index + 1} / {segments.length} 段 · {clock(segment.start)}–
           {segment.end === null ? "结束" : clock(segment.end)}
+          {suggestedParts.length > 0 && (
+            <span title="作答记录中答错或未答题目的答案句">
+              {" "}
+              · 错题句已听写 {suggestedParts.filter(dictated).length}/
+              {suggestedParts.length}
+            </span>
+          )}
         </p>
       </nav>
       <audio
@@ -616,6 +663,10 @@ function SegmentPlayer({
             {lines.map((line, i) => {
               const dictation = notes[`dictation-${line.start}`] || "";
               const marked = notes[`mark-${line.start}`] === "yes";
+              const todo =
+                missed.has(line.start) &&
+                line.start === segment.position &&
+                !dictated(segment);
               return (
                 <li
                   key={line.start}
@@ -661,7 +712,15 @@ function SegmentPlayer({
                       </span>
                     </button>
                     <span className="listening-line-tools">
-                      {dictation && expanded !== i && (
+                      {todo && expanded !== i && (
+                        <span
+                          className="listening-badge is-suggested"
+                          title="这句是答错或未答题目的答案句"
+                        >
+                          建议听写
+                        </span>
+                      )}
+                      {dictation && !todo && expanded !== i && (
                         <span
                           className="listening-badge"
                           title={`我的听写：${dictation}`}
