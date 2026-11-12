@@ -649,33 +649,43 @@ test.describe("Daily reading allows unanswered questions", () => {
     });
     // The source attempt: Q1 and Q4 right, Q2 wrong, Q3 left blank.
     await page.goto("/");
-    await page.evaluate(
-      async ({ hosted, id }) => {
-        const progress = await (await fetch("/api/progress")).json();
-        if (progress.attempts.some((attempt: any) => attempt.id === id)) return;
-        const attempt = {
-          id,
-          itemId: "demo-listening",
-          title: "Original listening fixture",
-          kind: "listening",
-          createdAt: new Date().toISOString(),
-          score: 2,
-          total: 4,
-          answers: { "0:0": "Monday", "0:1": "30", "0:3": "email" },
-        };
-        progress.attempts.push(attempt);
-        const response = await fetch(
-          hosted ? "/api/attempts" : "/api/progress",
-          {
-            method: hosted ? "POST" : "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(hosted ? attempt : progress),
-          },
-        );
-        if (!response.ok) throw new Error("Could not seed listening attempt");
-      },
-      { hosted: fixture.hosted, id: seed.attemptId },
-    );
+    // Retry until the freshly started API answers with real progress.
+    await expect(async () => {
+      const outcome = await page.evaluate(
+        async ({ hosted, id }) => {
+          const read = await fetch("/api/progress");
+          const progress = await read.json().catch(() => null);
+          if (!read.ok || !Array.isArray(progress?.attempts))
+            return `progress ${read.status}: ${JSON.stringify(progress)}`;
+          if (progress.attempts.some((attempt: any) => attempt.id === id))
+            return "ok";
+          const attempt = {
+            id,
+            itemId: "demo-listening",
+            title: "Original listening fixture",
+            kind: "listening",
+            createdAt: new Date().toISOString(),
+            score: 2,
+            total: 4,
+            answers: { "0:0": "Monday", "0:1": "30", "0:3": "email" },
+          };
+          progress.attempts.push(attempt);
+          const write = await fetch(
+            hosted ? "/api/attempts" : "/api/progress",
+            {
+              method: hosted ? "POST" : "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(hosted ? attempt : progress),
+            },
+          );
+          return write.ok
+            ? "ok"
+            : `save ${write.status}: ${await write.text()}`;
+        },
+        { hosted: fixture.hosted, id: seed.attemptId },
+      );
+      expect(outcome).toBe("ok");
+    }).toPass({ timeout: 10000 });
     await page.goto(`/#/daily/${seed.id}`);
     await page.reload();
     await page.getByRole("tab", { name: "分段听", exact: true }).click();
