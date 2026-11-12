@@ -227,8 +227,10 @@ function SegmentPlayer({
     player.playbackRate = speed;
     try {
       await player.play();
-    } catch {
-      setError("播放未能启动，请重试。");
+    } catch (reason) {
+      // A pause or seek right after play() aborts it on purpose; not a failure.
+      if ((reason as Error)?.name !== "AbortError")
+        setError("播放未能启动，请重试。");
     }
   }
   function select(next: number) {
