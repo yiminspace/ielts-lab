@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { QuestionRow } from "../lib/questions.mjs";
 import { dictationDiff } from "../lib/dictation-diff.mjs";
 import type { DailyLesson } from "../lib/daily";
@@ -77,6 +77,7 @@ function SegmentPlayer({
   send,
 }: { item: StudyItem } & Omit<ListeningProps, "itemId">) {
   const audio = useRef<HTMLAudioElement>(null);
+  const root = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLOListElement>(null);
   const repeatTimer = useRef<number | undefined>(undefined);
   const [gap, setGap] = useState(0);
@@ -261,6 +262,14 @@ function SegmentPlayer({
     }
   }
   useEffect(() => {
+    // Read the element itself: React's `playing` can lag a media event behind.
+    const toggle = () =>
+      audio.current && !audio.current.paused ? pause() : void play(false);
+    /** Space on a control inside the player means play/pause, not "click it". */
+    const ownsSpace = (target: HTMLElement) =>
+      !target.closest("input, textarea, select, [contenteditable]") &&
+      (!target.closest("button, summary, a[href]") ||
+        !!root.current?.contains(target));
     function shortcut(event: KeyboardEvent) {
       const target = event.target as HTMLElement;
       if (
@@ -268,14 +277,24 @@ function SegmentPlayer({
         event.altKey ||
         event.ctrlKey ||
         event.metaKey ||
-        target.closest("input, textarea, select, [contenteditable]")
+        event.isComposing
       )
         return;
-      if (event.code === "Space") {
-        if (target.closest("button, summary, a[href]")) return;
+      // Esc plays/pauses while typing a dictation, where Space must type a space.
+      if (
+        event.key === "Escape" &&
+        target.closest(".listening-sentence-editor textarea")
+      ) {
         event.preventDefault();
-        if (playing) pause();
-        else void play(false);
+        toggle();
+        return;
+      }
+      if (target.closest("input, textarea, select, [contenteditable]")) return;
+      if (event.code === "Space") {
+        if (!ownsSpace(target)) return;
+        event.preventDefault();
+        if (!event.repeat) toggle();
+        return;
       }
       const key = event.key.toLowerCase();
       if (key === "r") void play(true);
@@ -289,8 +308,17 @@ function SegmentPlayer({
         step(1);
       }
     }
+    // Buttons activate on Space keyup; cancel it so the focused control is not clicked.
+    function release(event: KeyboardEvent) {
+      if (event.code === "Space" && ownsSpace(event.target as HTMLElement))
+        event.preventDefault();
+    }
     window.addEventListener("keydown", shortcut);
-    return () => window.removeEventListener("keydown", shortcut);
+    window.addEventListener("keyup", release);
+    return () => {
+      window.removeEventListener("keydown", shortcut);
+      window.removeEventListener("keyup", release);
+    };
   });
   if (segmentError || !src)
     return (
@@ -311,7 +339,7 @@ function SegmentPlayer({
     `${Math.min(100, Math.max(0, ((time - start) / total) * 100))}%`;
   const scopeName = sentence === null ? "本段" : "本句";
   return (
-    <div className="daily-listening">
+    <div className="daily-listening" ref={root}>
       <nav className="listening-segment-nav" aria-label="听力段落">
         <h2>第 {numbers(segment)} 题</h2>
         <button
@@ -629,7 +657,32 @@ function SegmentPlayer({
                         </span>
                       )}
                       <button
-                        className="listening-mark"
+                        className="listening-line-tool listening-dictate"
+                        aria-label={`听写第 ${i + 1} 句`}
+                        aria-expanded={expanded === i}
+                        title={expanded === i ? "收起听写" : "听写这一句"}
+                        onClick={() => {
+                          if (expanded === i) return setExpanded(null);
+                          if (sentence !== i) {
+                            pause();
+                            setRange(null);
+                            setSentence(i);
+                            seek(line.start);
+                          }
+                          setExpanded(i);
+                          requestAnimationFrame(() =>
+                            document
+                              .getElementById(
+                                `sentence-${line.start}-dictation`,
+                              )
+                              ?.focus(),
+                          );
+                        }}
+                      >
+                        <PenLine size={15} />
+                      </button>
+                      <button
+                        className="listening-line-tool listening-mark"
                         aria-label={`第 ${i + 1} 句还需练`}
                         aria-pressed={marked}
                         title={marked ? "取消“还需练”标记" : "标记为还需练"}
@@ -644,7 +697,7 @@ function SegmentPlayer({
                       </button>
                     </span>
                   </div>
-                  {expanded === i ? (
+                  {expanded === i && (
                     <SentencePractice
                       line={line}
                       number={i + 1}
@@ -662,25 +715,15 @@ function SegmentPlayer({
                       check={(text) =>
                         send("dictation", { start: line.start, text })
                       }
-                      collapse={() => setExpanded(null)}
                     />
-                  ) : (
-                    sentence === i && (
-                      <button
-                        className="listening-open-dictation"
-                        onClick={() => setExpanded(i)}
-                      >
-                        <PenLine size={14} />
-                        听写这一句
-                      </button>
-                    )
                   )}
                 </li>
               );
             })}
           </ol>
           <p className="listening-shortcuts">
-            点句子单句播放 · 空格 播放/暂停 · R 重听 · ← → 切句 · L 循环
+            点句子单句播放 · 空格 播放/暂停（听写框内用 Esc）· R 重听 · ← → 切句
+            · L 循环
           </p>
         </section>
         <section className="listening-practice" aria-label="听写与题目">
@@ -821,7 +864,6 @@ function SentencePractice({
   saveStatus,
   save,
   check,
-  collapse,
 }: {
   line: { start: number; text: string };
   number: number;
@@ -833,10 +875,8 @@ function SentencePractice({
   saveStatus: string;
   save: (key: string, value: string) => void;
   check: (text: string) => Promise<boolean>;
-  collapse: () => void;
 }) {
   const [submitting, setSubmitting] = useState(false);
-  const [hintOpen, setHintOpen] = useState(false);
   const [error, setError] = useState("");
   let snapshot: { text: string; reference: string } | null = null;
   try {
@@ -844,43 +884,59 @@ function SentencePractice({
   } catch {
     /* Keep legacy notes readable. */
   }
-  const latest = checks.at(-1);
   const comparison =
-    snapshot?.reference === line.text ? snapshot.text : latest?.text;
+    snapshot?.reference === line.text ? snapshot.text : checks.at(-1)?.text;
+  const parts =
+    typeof comparison === "string" && comparison.trim()
+      ? dictationDiff(line.text, comparison)
+      : null;
+  const perfect = !!parts?.every((part) => part.type === "equal");
+  /** The newest hint for exactly the compared text; older ones are history. */
+  const current = [...checks]
+    .reverse()
+    .find((entry) => entry.text === comparison);
+  const history = checks
+    .filter((entry) => entry !== current && entry.feedback)
+    .reverse();
+  const pending = submitting || current?.status === "pending";
   const id = `sentence-${line.start}`;
-  function verify() {
-    if (!text.trim()) return;
-    setError("");
-    setHintOpen(false);
-    save(
-      `checked-${line.start}`,
-      JSON.stringify({ text, reference: line.text }),
-    );
-  }
-  async function requestHint() {
-    if (!text.trim() || submitting || disabled || comparison !== text) return;
-    if (!available) {
-      setError("AI 服务尚未配置，文字对照可以继续使用。");
-      return;
-    }
+  async function requestHint(value: string) {
+    if (!value.trim() || submitting || disabled || !available) return;
     setSubmitting(true);
-    setHintOpen(true);
     setError("");
     try {
-      if (!(await check(text))) setError("重听提示提交失败，可以重试。");
+      if (!(await check(value))) setError("重听提示提交失败，可以重试。");
     } catch {
       setError("AI 暂不可用，可以重试重听提示。");
     } finally {
       setSubmitting(false);
     }
   }
+  /** Checking is local; a hint is requested once per differing dictation text. */
+  function verify() {
+    if (!text.trim()) return;
+    setError("");
+    save(
+      `checked-${line.start}`,
+      JSON.stringify({ text, reference: line.text }),
+    );
+    const differs = dictationDiff(line.text, text).some(
+      (part) => part.type !== "equal",
+    );
+    const known = checks.some(
+      (entry) => entry.text === text && entry.status !== "failed",
+    );
+    if (differs && !known) void requestHint(text);
+  }
+  const feedbackText = (entry: (typeof checks)[number]) =>
+    entry.feedback
+      ? `${entry.feedback.feedback_zh} ${entry.feedback.practice_zh}`
+      : "";
   return (
     <div className="listening-sentence-editor">
       <div className="listening-editor-head">
         <label htmlFor={`${id}-dictation`}>听写第 {number} 句</label>
-        <button className="listening-text-button" onClick={collapse}>
-          收起听写
-        </button>
+        <small>Esc 播放 / 暂停</small>
       </div>
       <textarea
         id={`${id}-dictation`}
@@ -900,27 +956,19 @@ function SentencePractice({
         >
           核对听写
         </button>
-        <button
-          disabled={
-            !text.trim() || comparison !== text || disabled || submitting
-          }
-          onClick={() => void requestHint()}
-        >
-          {submitting || latest?.status === "pending"
-            ? "正在生成提示…"
-            : "给我重听提示"}
-        </button>
+        {comparison !== undefined && comparison !== text && parts && (
+          <small>听写已修改，下方为上次核对</small>
+        )}
       </div>
-      {typeof comparison === "string" && comparison.trim() && (
-        <div className="listening-diff" aria-label={`第 ${number} 句原文对照`}>
-          <p>
-            原文对照 <small>绿色为漏词，删除线为多写或替换</small>
-          </p>
-          {comparison !== text && (
-            <small>当前听写已修改，下面是上次核对。</small>
-          )}
-          <div>
-            {dictationDiff(line.text, comparison).map((part, index) =>
+      {parts && (
+        <div className="listening-result">
+          <p
+            className="listening-diff"
+            aria-label={`第 ${number} 句原文对照`}
+            title="绿色为漏词，删除线为多写或替换"
+          >
+            <span className="listening-result-label">对照</span>
+            {parts.map((part, index) =>
               part.type === "missing" ? (
                 <ins key={index}>{part.text} </ins>
               ) : part.type === "extra" ? (
@@ -929,74 +977,99 @@ function SentencePractice({
                 <span key={index}>{part.text} </span>
               ),
             )}
-          </div>
+          </p>
+          {perfect ? (
+            <p className="listening-perfect">✓ 全部正确</p>
+          ) : (
+            <div
+              className="listening-hint"
+              aria-label={`第 ${number} 句重听提示`}
+              aria-live="polite"
+            >
+              <span className="listening-result-label">提示</span>
+              <div className="listening-hint-body">
+                {current?.feedback ? (
+                  <FeedbackNote text={feedbackText(current)} />
+                ) : pending ? (
+                  <span role="status">正在生成重听提示…</span>
+                ) : !available ? (
+                  <span>AI 服务尚未配置，文字对照可以继续使用。</span>
+                ) : (
+                  <span>
+                    {current?.status === "failed"
+                      ? "提示生成失败。"
+                      : "暂无重听提示。"}
+                    <button
+                      className="listening-link"
+                      disabled={disabled || comparison !== text}
+                      title={
+                        comparison !== text
+                          ? "请先核对当前听写"
+                          : disabled
+                            ? "课程正在处理其他任务，稍后再试"
+                            : undefined
+                      }
+                      onClick={() => void requestHint(text)}
+                    >
+                      {current?.status === "failed" ? "重试" : "获取提示"}
+                    </button>
+                  </span>
+                )}
+                {history.length > 0 && (
+                  <details className="listening-hint-history">
+                    <summary>历史提示（{history.length}）</summary>
+                    {history.map((entry) => (
+                      <article key={entry.id}>
+                        <p>听写　{entry.text}</p>
+                        <FeedbackNote text={feedbackText(entry)} />
+                      </article>
+                    ))}
+                  </details>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
       {error && <p role="alert">{error}</p>}
-      {checks.length > 0 && (
-        <details
-          className="listening-ai-notes"
-          aria-label={`第 ${number} 句重听提示`}
-          open={hintOpen}
-          onToggle={(event) => setHintOpen(event.currentTarget.open)}
-        >
-          <summary>重听提示</summary>
-          {latest?.text !== text && <small>这条提示对应上次提交的听写。</small>}
-          {latest?.status === "failed" && (
-            <p role="alert">重听提示生成失败，可以再次请求。</p>
-          )}
-          {latest?.feedback ? (
-            <FeedbackNote
-              text={`${latest.feedback.feedback_zh}\n\n${latest.feedback.practice_zh}`}
-            />
-          ) : (
-            <p role="status">
-              {latest?.status === "pending"
-                ? "正在生成重听提示…"
-                : "本次提示尚未生成。"}
-            </p>
-          )}
-          {checks.length > 1 && (
-            <details>
-              <summary>历史提示（{checks.length - 1}）</summary>
-              {checks
-                .slice(0, -1)
-                .reverse()
-                .map((entry) => (
-                  <article key={entry.id}>
-                    <p>听写　{entry.text}</p>
-                    {entry.feedback ? (
-                      <FeedbackNote
-                        text={`${entry.feedback.feedback_zh}\n\n${entry.feedback.practice_zh}`}
-                      />
-                    ) : (
-                      <p>
-                        {entry.status === "failed" ? "生成失败" : "尚未生成"}
-                      </p>
-                    )}
-                  </article>
-                ))}
-            </details>
-          )}
-        </details>
+      {saveStatus.startsWith("保存失败") && (
+        <small role="alert" className="listening-save-status">
+          {saveStatus}
+        </small>
       )}
-      <small role="status" className="listening-save-status">
-        {saveStatus}
-      </small>
     </div>
   );
 }
 
 function FeedbackNote({ text }: { text: string }) {
+  const body = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
-  const lengthy = text.length > 160 || text.split("\n").length > 3;
+  const [overflows, setOverflows] = useState(false);
+  // Offer "expand" only when the clamped text is actually cut off. Re-measure
+  // whenever the box resizes: a note inside a closed <details> measures 0 until
+  // it is opened, and wrapping changes with the panel width.
+  useLayoutEffect(() => {
+    const node = body.current;
+    if (!node || expanded) return;
+    const measure = () =>
+      setOverflows(node.scrollHeight > node.clientHeight + 1);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [text, expanded]);
   return (
     <div className="listening-feedback">
-      <div className={lengthy && !expanded ? "listening-feedback-summary" : ""}>
+      <div ref={body} className={expanded ? "" : "listening-feedback-summary"}>
         <MarkdownText text={text} />
       </div>
-      {lengthy && (
-        <button aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
+      {(overflows || expanded) && (
+        <button
+          className="listening-link"
+          aria-expanded={expanded}
+          onClick={() => setExpanded(!expanded)}
+        >
           {expanded ? "收起反馈" : "展开完整反馈"}
         </button>
       )}
