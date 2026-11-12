@@ -4,7 +4,7 @@ import { dictationDiff } from "../lib/dictation-diff.mjs";
 import type { DailyLesson } from "../lib/daily";
 import type { StudyItem } from "../types";
 import { mediaUrl, RichText, MarkdownText } from "../lib/content";
-import { displayAnswer } from "../lib/questions.mjs";
+import { assessRow, displayAnswer } from "../lib/questions.mjs";
 import { listeningSegments } from "../lib/listening-segments.mjs";
 import {
   ChevronLeft,
@@ -771,7 +771,13 @@ function SegmentPlayer({
                   )}
                   <details className="listening-answer">
                     <summary>查看第 {row.number} 题答案</summary>
-                    <p>{displayAnswer(row)}</p>
+                    {row.options.length > 0 && (
+                      <ListeningAnswerCheck
+                        row={row}
+                        value={notes[`answer-${row.id}`]}
+                      />
+                    )}
+                    <p>正确答案：{displayAnswer(row)}</p>
                   </details>
                 </article>
               ))}
@@ -808,6 +814,44 @@ function SegmentPlayer({
   );
 }
 
+function selectedChoices(value?: string): string[] {
+  try {
+    const saved = JSON.parse(value || "[]");
+    if (Array.isArray(saved))
+      return saved.filter((option) => typeof option === "string");
+  } catch {
+    /* A damaged local answer can be selected again. */
+  }
+  return [];
+}
+
+function ListeningAnswerCheck({
+  row,
+  value,
+}: {
+  row: QuestionRow;
+  value?: string;
+}) {
+  const selected = selectedChoices(value);
+  const result = assessRow(row, row.type === "2" ? selected : selected[0]);
+  const labels: Record<string, string> = {
+    correct: "回答正确",
+    incorrect: "回答错误",
+    partial: `部分正确（${result.earned}/${result.total}）`,
+    blank: "尚未作答",
+    manual: "需人工核对",
+  };
+  return (
+    <div className="listening-answer-check" role="status">
+      <p className={`daily-${result.status}`}>{labels[result.status]}</p>
+      {result.reason && <p>{result.reason}</p>}
+      <p>
+        你的答案：{selected.length ? displayAnswer(row, selected) : "未选择"}
+      </p>
+    </div>
+  );
+}
+
 function ListeningChoices({
   row,
   value,
@@ -817,14 +861,7 @@ function ListeningChoices({
   value?: string;
   onChange: (value: string) => void;
 }) {
-  let selected: string[] = [];
-  try {
-    const saved = JSON.parse(value || "[]");
-    if (Array.isArray(saved))
-      selected = saved.filter((option) => typeof option === "string");
-  } catch {
-    /* A damaged local answer can be selected again. */
-  }
+  const selected = selectedChoices(value);
   const multiple = row.type === "2";
   return (
     <fieldset className="listening-choices">

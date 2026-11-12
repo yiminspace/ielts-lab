@@ -1035,6 +1035,114 @@ test.describe("Daily reading allows unanswered questions", () => {
     await expect(panel).toContainText("暂时无法分段");
   });
 
+  test("checks original listening answers when revealed and after changing choices", async ({
+    page,
+    context,
+  }) => {
+    await login(context, fixture);
+    const seed = await fixture.app.daily.ensure(
+      fixture.hosted ? owner : "00000000-0000-4000-8000-000000000001",
+      {
+        id: crypto.randomUUID(),
+        itemId: "demo-listening",
+        kind: "listening",
+        answers: {},
+        createdAt: new Date().toISOString(),
+      },
+    );
+    await page.route("**/api/items/demo-listening", async (route) => {
+      const response = await route.fetch();
+      const item = await response.json();
+      const original = item.data.questions[0];
+      const multi = structuredClone(original);
+      multi.questionJson = {
+        questionType: "2",
+        startIndex: 11,
+        endIndex: 12,
+        questionNum: 2,
+        descriptions: "Choose TWO answers.",
+        questions: [
+          {
+            content:
+              "Which TWO activities are offered by the conversation club?",
+            number: 2,
+            options: [
+              "Small-group conversations",
+              "Private driving lessons",
+              "Weekend book discussions",
+              "Swimming competitions",
+              "Professional cooking courses",
+            ].map((content) => ({ content })),
+          },
+        ],
+      };
+      multi.answerJson = [{ ...original.answerJson[0], correctValue: [0, 2] }];
+      const single = structuredClone(multi);
+      single.questionJson = {
+        ...multi.questionJson,
+        questionType: "1",
+        startIndex: 13,
+        endIndex: 13,
+        questionNum: 1,
+        questions: [
+          {
+            content: "When does the club meet?",
+            number: 1,
+            options: ["Monday", "Tuesday", "Friday"].map((content) => ({
+              content,
+            })),
+          },
+        ],
+      };
+      single.answerJson = [{ ...original.answerJson[1], correctValue: 0 }];
+      item.data.questions = [multi, single];
+      await route.fulfill({ response, json: item });
+    });
+    await page.goto(`/#/daily/${seed.id}`);
+    await page.getByRole("tab", { name: "分段听", exact: true }).click();
+    const panel = page.getByRole("tabpanel", { name: "分段听", exact: true });
+    const reveal = panel.locator(".listening-answer").first();
+    const first = panel.getByRole("checkbox", {
+      name: "A. Small-group conversations",
+    });
+    const second = panel.getByRole("checkbox", {
+      name: "B. Private driving lessons",
+    });
+    const third = panel.getByRole("checkbox", {
+      name: "C. Weekend book discussions",
+    });
+    await expect(reveal.getByRole("status")).not.toBeVisible();
+    await reveal.locator("summary").click();
+    await expect(reveal).toContainText("尚未作答");
+    await expect(reveal).toContainText("正确答案：A, C");
+    await second.check();
+    await expect(reveal).toContainText("回答错误");
+    await second.uncheck();
+    await first.check();
+    await expect(reveal).toContainText("部分正确（1/2）");
+    await third.check();
+    await expect(reveal).toContainText("回答正确");
+    await expect(reveal).toContainText("你的答案：A, C");
+    await page.reload();
+    await page.getByRole("tab", { name: "分段听", exact: true }).click();
+    await reveal.locator("summary").click();
+    await expect(reveal).toContainText("回答正确");
+    await panel.getByRole("button", { name: "下一段", exact: true }).click();
+    await reveal.locator("summary").click();
+    await expect(reveal).toContainText("尚未作答");
+    await panel.getByRole("radio", { name: "A. Monday" }).check();
+    await expect(reveal).toContainText("回答正确");
+    await panel.getByRole("radio", { name: "B. Tuesday" }).check();
+    await expect(reveal).toContainText("回答错误");
+    await expect(reveal).toContainText("你的答案：B");
+    await expect(reveal).toContainText("正确答案：A");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(reveal.getByText("回答错误", { exact: true })).toBeVisible();
+    expect(
+      await panel.evaluate((node) => node.scrollWidth <= node.clientWidth),
+    ).toBe(true);
+  });
+
   test("fits listening workspace and saves selectable original practice questions", async ({
     page,
     context,
