@@ -634,14 +634,6 @@
   background: var(--ls-accent);
   filter: brightness(1.06);
 }
-.daily-listening .listening-text-button {
-  border: 0;
-  background: transparent;
-  min-height: 28px;
-  padding: 2px 6px;
-  color: var(--muted);
-  font-size: 12px;
-}
 
 /* Segment navigator */
 .listening-segment-nav {
@@ -941,7 +933,7 @@
   padding: 1px 6px;
   white-space: nowrap;
 }
-.daily-listening .listening-mark {
+.daily-listening .listening-line-tool {
   width: 30px;
   min-height: 30px;
   padding: 0;
@@ -950,9 +942,16 @@
   color: var(--muted);
   opacity: 0.45;
 }
-.listening-sentences > li:hover .listening-mark,
-.daily-listening .listening-mark:focus-visible {
+.listening-sentences > li:hover .listening-line-tool,
+.listening-sentences > li.is-selected .listening-line-tool,
+.daily-listening .listening-line-tool:focus-visible {
   opacity: 1;
+}
+.daily-listening .listening-dictate[aria-expanded="true"] {
+  opacity: 1;
+  color: var(--ls-accent-text);
+  background: var(--surface);
+  border-color: var(--ls-accent);
 }
 .daily-listening .listening-mark[aria-pressed="true"] {
   opacity: 1;
@@ -960,13 +959,6 @@
 }
 .daily-listening .listening-mark[aria-pressed="true"] svg {
   fill: currentColor;
-}
-.daily-listening .listening-open-dictation {
-  margin: 0 0 8px 56px;
-  min-height: 28px;
-  padding: 3px 10px;
-  font-size: 12px;
-  background: var(--surface);
 }
 .listening-shortcuts {
   margin: 6px 0 0;
@@ -992,6 +984,10 @@
   font-weight: 600;
   font-size: 13px;
 }
+.listening-editor-head small {
+  font-size: 11px;
+  color: var(--muted);
+}
 .listening-sentence-editor textarea {
   display: block;
   width: 100%;
@@ -1013,46 +1009,94 @@
   gap: 8px;
   margin: 8px 0 0;
 }
-.listening-diff,
-.listening-ai-notes {
-  margin: 10px 0 0;
-  line-height: 1.7;
-}
-.listening-diff p,
-.listening-ai-notes p {
-  margin: 4px 0;
-}
-.listening-diff small,
-.listening-ai-notes small {
+.listening-check-actions small {
   color: var(--muted);
   font-size: 11px;
+}
+/* Diff and replay hint share one compact card. */
+.listening-result {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--panel);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.listening-result-label {
+  flex-shrink: 0;
+  margin-right: 8px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 18px;
+  display: inline-block;
+}
+.listening-diff {
+  margin: 0;
+  font-size: 14px;
+  cursor: help;
 }
 .listening-diff ins {
   background: var(--vg-color-success-soft);
   color: var(--vg-color-success);
   text-decoration: none;
-  padding: 1px 2px;
+  padding: 0 2px;
   border-radius: 2px;
 }
 .listening-diff del {
   background: var(--vg-color-danger-soft);
   color: var(--vg-color-danger);
-  padding: 1px 2px;
+  padding: 0 2px;
   border-radius: 2px;
 }
-.listening-ai-notes {
-  border-top: 1px solid var(--line);
-  padding-top: 6px;
-  font-size: 13px;
-}
-.listening-ai-notes > summary {
-  padding: 4px 0;
-  font-size: 12px;
+.listening-perfect {
+  margin: 4px 0 0;
+  color: var(--green);
   font-weight: 600;
 }
-.listening-ai-notes article {
+.listening-hint {
+  display: flex;
+  align-items: flex-start;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--line);
+  color: var(--muted);
+}
+.listening-hint .listening-result-label {
+  margin-top: 2px;
+}
+.listening-hint-body {
+  flex: 1;
+  min-width: 0;
+}
+.daily-listening .listening-link {
+  display: inline;
+  min-height: 0;
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ls-accent-text);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.listening-hint-history {
+  font-size: 12px;
+}
+.listening-hint-history > summary {
+  display: inline;
+  color: var(--muted);
+}
+.listening-hint-history article {
+  margin-top: 4px;
+  padding-top: 4px;
   border-top: 1px solid var(--line);
-  padding: 6px 0;
+}
+.listening-hint-history article p {
+  margin: 0;
 }
 .listening-markdown {
   overflow-wrap: anywhere;
@@ -1070,14 +1114,26 @@
   background: var(--panel);
   padding: 1px 3px;
 }
+.listening-feedback {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+}
+.listening-feedback > div {
+  min-width: 0;
+}
 .listening-feedback-summary {
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.listening-feedback > button {
-  margin-top: 4px;
+.listening-feedback .listening-markdown p {
+  margin: 0;
+}
+.daily-listening .listening-feedback > .listening-link {
+  flex-shrink: 0;
+  margin-left: 0;
 }
 .listening-save-status {
   margin: 6px 0 0;
@@ -1376,13 +1432,10 @@
   .listening-sentence-editor {
     margin-left: 10px;
   }
-  .daily-listening .listening-open-dictation {
-    margin-left: 10px;
-  }
   .listening-shortcuts {
     display: none;
   }
-  .daily-listening .listening-mark {
+  .daily-listening .listening-line-tool {
     opacity: 0.8;
   }
 }

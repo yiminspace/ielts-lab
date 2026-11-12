@@ -754,7 +754,29 @@ test.describe("Daily reading allows unanswered questions", () => {
     await expect
       .poll(() => player.evaluate((node: HTMLAudioElement) => node.currentTime))
       .toBeLessThan(1);
+    const paused = () =>
+      player.evaluate((node: HTMLAudioElement) => node.paused);
+    // Space resumes/pauses even while the clicked sentence keeps focus,
+    // instead of clicking the sentence and restarting it.
+    await firstSentence.focus();
+    await player.evaluate((node: HTMLAudioElement) => {
+      node.pause();
+      node.currentTime = 0.5;
+    });
+    await expect.poll(paused).toBe(true);
+    await page.keyboard.press("Space");
+    await expect.poll(paused).toBe(false);
+    expect(
+      await player.evaluate((node: HTMLAudioElement) => node.currentTime),
+    ).toBeGreaterThanOrEqual(0.5);
+    await page.keyboard.press("Space");
+    await expect.poll(paused).toBe(true);
+    // Esc plays/pauses inside the dictation box, where Space types.
     await panel.getByLabel("第 1 句听写", { exact: true }).focus();
+    await page.keyboard.press("Escape");
+    await expect.poll(paused).toBe(false);
+    await page.keyboard.press("Escape");
+    await expect.poll(paused).toBe(true);
     await page.keyboard.press("r");
     await expect(panel.getByLabel("第 1 句听写", { exact: true })).toHaveValue(
       "r",
@@ -767,13 +789,14 @@ test.describe("Daily reading allows unanswered questions", () => {
       .fill(
         "Welcome to Riverside learning centre. The new conversation club meets Monday.",
       );
-    await panel.getByRole("button", { name: "核对听写", exact: true }).click();
     expect(hintRequests).toBe(0);
+    // A check with differences requests the replay hint automatically.
+    await panel.getByRole("button", { name: "核对听写", exact: true }).click();
     await expect(panel.getByLabel("第 1 句原文对照")).toBeVisible();
-    await panel
-      .getByRole("button", { name: "给我重听提示", exact: true })
-      .click();
-    await expect(panel.getByLabel("第 1 句原文对照")).toBeVisible();
+    await expect.poll(() => hintRequests).toBe(1);
+    await expect(
+      panel.getByRole("button", { name: "给我重听提示", exact: true }),
+    ).toHaveCount(0);
     await expect(panel.getByLabel("第 1 句重听提示")).toContainText("核对漏写");
     await expect(
       panel
@@ -783,20 +806,21 @@ test.describe("Daily reading allows unanswered questions", () => {
         .first(),
     ).toBeVisible();
     await expect(panel.getByLabel("第 1 句重听提示")).not.toContainText("**");
+    // Re-checking the same text reuses its hint instead of asking again.
+    await panel.getByRole("button", { name: "核对听写", exact: true }).click();
+    await page.waitForTimeout(300);
+    expect(hintRequests).toBe(1);
+    // A perfect dictation needs no hint.
     await panel
       .getByLabel("第 1 句听写", { exact: true })
       .fill(
         "Welcome to the Riverside learning centre. The new conversation club meets on Monday.",
       );
     await panel.getByRole("button", { name: "核对听写", exact: true }).click();
+    await expect(panel.getByText("✓ 全部正确", { exact: true })).toBeVisible();
+    await expect(panel.getByLabel("第 1 句重听提示")).toHaveCount(0);
+    await page.waitForTimeout(300);
     expect(hintRequests).toBe(1);
-    await expect(panel.getByLabel("第 1 句原文对照")).toBeVisible();
-    await panel
-      .getByRole("button", { name: "给我重听提示", exact: true })
-      .click();
-    await expect(
-      panel.getByText("历史提示（1）", { exact: true }),
-    ).toBeVisible();
     await expect(panel.getByText("我的笔记", { exact: true })).toHaveCount(0);
     await expect(
       panel.getByRole("button", { name: "核对听写", exact: true }),
@@ -805,12 +829,12 @@ test.describe("Daily reading allows unanswered questions", () => {
       .getByLabel("第 1 句听写", { exact: true })
       .fill("long-feedback");
     await panel.getByRole("button", { name: "核对听写", exact: true }).click();
-    expect(hintRequests).toBe(2);
+    await expect.poll(() => hintRequests).toBe(2);
     await expect(panel.getByLabel("第 1 句原文对照")).toBeVisible();
-    await panel
-      .getByRole("button", { name: "给我重听提示", exact: true })
-      .click();
     const aiNotes = panel.getByLabel("第 1 句重听提示");
+    await expect(
+      aiNotes.getByText("历史提示（1）", { exact: true }),
+    ).toBeVisible();
     await aiNotes
       .getByRole("button", { name: "展开完整反馈", exact: true })
       .click();
@@ -844,6 +868,25 @@ test.describe("Daily reading allows unanswered questions", () => {
     await expect(panel.getByLabel("第 1 句听写", { exact: true })).toHaveCount(
       0,
     );
+    // The pen in the sentence row opens and closes that sentence's dictation.
+    const dictateSecond = panel.getByRole("button", {
+      name: "听写第 2 句",
+      exact: true,
+    });
+    await expect(dictateSecond).toHaveAttribute("aria-expanded", "false");
+    await dictateSecond.click();
+    await expect(dictateSecond).toHaveAttribute("aria-expanded", "true");
+    await expect(
+      panel.getByLabel("第 2 句听写", { exact: true }),
+    ).toBeFocused();
+    await expect(
+      panel.getByRole("button", { name: "播放第 2 句", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await dictateSecond.click();
+    await expect(panel.getByLabel("第 2 句听写", { exact: true })).toHaveCount(
+      0,
+    );
+    await panel.getByRole("radio", { name: "整段", exact: true }).click();
     await expect(panel.getByLabel("本段笔记", { exact: true })).toHaveValue(
       "Original segment note",
     );
@@ -856,9 +899,7 @@ test.describe("Daily reading allows unanswered questions", () => {
       .getByRole("button", { name: "播放第 1 句", exact: true })
       .click();
     await expect(panel.getByText("我的笔记", { exact: true })).toHaveCount(0);
-    await expect(panel.getByLabel("第 1 句重听提示")).not.toHaveAttribute(
-      "open",
-    );
+    await expect(panel.getByLabel("第 1 句重听提示")).toBeVisible();
     await panel.getByRole("button", { name: "暂停", exact: true }).click();
     const mark = panel.getByRole("button", {
       name: "第 1 句还需练",
@@ -1114,9 +1155,6 @@ test.describe("Daily reading allows unanswered questions", () => {
       );
     await expect(panel.getByText("我的笔记", { exact: true })).toHaveCount(0);
     await panel.getByRole("button", { name: "核对听写", exact: true }).click();
-    await panel
-      .getByRole("button", { name: "给我重听提示", exact: true })
-      .click();
     await expect(
       panel.getByRole("button", { name: "核对听写", exact: true }),
     ).toBeEnabled();
@@ -1175,10 +1213,6 @@ test.describe("Daily reading allows unanswered questions", () => {
       .fill("Welcome to the centre.");
     await panel.getByRole("button", { name: "核对听写", exact: true }).click();
     await expect(panel.getByLabel("第 1 句原文对照")).toBeVisible();
-    expect(hintRequests).toBe(beforeOfflineCheck);
-    await panel
-      .getByRole("button", { name: "给我重听提示", exact: true })
-      .click();
     await expect(
       panel.getByText("AI 服务尚未配置，文字对照可以继续使用。", {
         exact: true,
