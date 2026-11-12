@@ -133,7 +133,7 @@ function SegmentPlayer({
     (line) => currentTime >= line.start && currentTime < line.end,
   );
   const hasTranslation = lines.some((line) => line.translation);
-  const noteKey = `segment-${segment?.start}`;
+  const noteKey = `segment-${index === 0 ? 0 : segment?.position}`;
   function persist(next: Record<string, string>) {
     setNotes(next);
     try {

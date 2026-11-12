@@ -596,7 +596,7 @@ test.describe("Daily reading allows unanswered questions", () => {
     await fixture?.stop();
   });
 
-  test("segments original listening answers and stops at the next answer boundary", async ({
+  test("segments original listening with overlapping context and stops at the context boundary", async ({
     page,
     context,
   }) => {
@@ -680,22 +680,22 @@ test.describe("Daily reading allows unanswered questions", () => {
     await expect(panel.locator(".daily-listening-transcript")).toContainText(
       "Monday",
     );
-    await expect(
-      panel.locator(".daily-listening-transcript"),
-    ).not.toContainText("twenty pounds");
+    await expect(panel.locator(".daily-listening-transcript")).toContainText(
+      "twenty pounds",
+    );
     await panel.getByRole("button", { name: "播放本段", exact: true }).click();
     await expect
       .poll(() => player.evaluate((node: HTMLAudioElement) => node.paused))
       .toBe(false);
     await player.evaluate((node: HTMLAudioElement) => {
-      node.currentTime = 5.1;
+      node.currentTime = 13.22;
     });
     await expect
       .poll(() => player.evaluate((node: HTMLAudioElement) => node.paused))
       .toBe(true);
     expect(
       await player.evaluate((node: HTMLAudioElement) => node.currentTime),
-    ).toBeCloseTo(5.14, 1);
+    ).toBeCloseTo(13.24, 1);
     await panel.getByRole("button", { name: "下一段", exact: true }).click();
     await expect(
       panel.getByRole("heading", { name: "第 2 题", exact: true }),
@@ -705,7 +705,7 @@ test.describe("Daily reading allows unanswered questions", () => {
     ).toHaveCount(0);
     expect(
       await player.evaluate((node: HTMLAudioElement) => node.currentTime),
-    ).toBeCloseTo(5.14, 1);
+    ).toBeCloseTo(0, 1);
     await panel.getByLabel("分段听语速").selectOption("0.75");
     await panel.getByRole("button", { name: "重听本段", exact: true }).click();
     expect(
