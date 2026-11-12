@@ -1,7 +1,31 @@
 import { assessRow, buildGroups, parseTranscript } from "./questions.mjs";
 import { resolveSolutionLine } from "./question-review.mjs";
 
-/** Use saved answer sentence timestamps; never estimate word timings. */
+/** Keep every saved evidence hint, including all answers in a multiple-choice row. */
+function evidenceIndices(solution, lines, primary) {
+  const phrases =
+    typeof solution?.positionSentence === "string"
+      ? solution.positionSentence.split(/[;；\n]/)
+      : [];
+  const matches = phrases
+    .filter((phrase) => phrase.trim())
+    .map((phrase) => resolveSolutionLine({ positionSentence: phrase }, lines))
+    .filter((index) => index >= 0);
+  // Sentence numbers can refer to a different transcript revision. As in the
+  // existing resolver, matching source text takes precedence over stale numbers.
+  if (matches.length) return [primary, ...matches];
+  const numbers = Array.isArray(solution?.sentenceList)
+    ? solution.sentenceList
+    : [];
+  return [
+    primary,
+    ...numbers.map((number) =>
+      resolveSolutionLine({ sentenceList: [number] }, lines),
+    ),
+  ].filter((index) => index >= 0);
+}
+
+/** Use original sentence timestamps and overlapping context around all evidence. */
 export function listeningSegments(data, duration = Number(data.seconds) || 0) {
   const lines = parseTranscript(data.listenDetail, duration);
   const groups = buildGroups(data);
@@ -36,19 +60,43 @@ export function listeningSegments(data, duration = Number(data.seconds) || 0) {
     if (last && last.position === position) last.entries.push(entry);
     else segments.push({ position, entries: [entry] });
   }
+  const spans = segments.map((segment) => {
+    const indices = segment.entries.flatMap((entry) =>
+      evidenceIndices(entry.row.solution, lines, entry.index),
+    );
+    return { first: Math.min(...indices), last: Math.max(...indices) };
+  });
+  // Divide intervening sentences between neighbours, then extend each side to
+  // include two leading and three trailing context sentences. Overlap is intentional.
+  const boundaries = spans
+    .slice(1)
+    .map((span, i) => Math.floor((spans[i].last + span.first) / 2));
   return {
     error: "",
     segments: segments.map((segment, i) => {
-      const start = i === 0 ? 0 : segment.position;
+      const first = Math.max(
+        0,
+        Math.min(i === 0 ? 0 : boundaries[i - 1] + 1, spans[i].first - 2),
+      );
+      const last = Math.min(
+        lines.length - 1,
+        Math.max(
+          i === segments.length - 1 ? lines.length - 1 : boundaries[i],
+          spans[i].last + 3,
+        ),
+      );
+      const start = i === 0 ? 0 : lines[first].start;
       const end =
-        segments[i + 1]?.position ?? (duration > start ? duration : null);
+        last < lines.length - 1
+          ? lines[last].end
+          : duration > start
+            ? duration
+            : null;
       return {
         ...segment,
         start,
         end,
-        lines: lines.filter(
-          (line) => line.start >= start && (end === null || line.start < end),
-        ),
+        lines: lines.slice(first, last + 1),
       };
     }),
   };

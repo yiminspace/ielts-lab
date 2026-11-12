@@ -596,7 +596,7 @@ test.describe("Daily reading allows unanswered questions", () => {
     await fixture?.stop();
   });
 
-  test("segments original listening answers and stops at the next answer boundary", async ({
+  test("segments original listening with overlapping context and stops at the context boundary", async ({
     page,
     context,
   }) => {
@@ -731,22 +731,22 @@ test.describe("Daily reading allows unanswered questions", () => {
     await expect(panel.locator(".daily-listening-transcript")).toContainText(
       "Monday",
     );
-    await expect(
-      panel.locator(".daily-listening-transcript"),
-    ).not.toContainText("twenty pounds");
+    await expect(panel.locator(".daily-listening-transcript")).toContainText(
+      "twenty pounds",
+    );
     await panel.getByRole("button", { name: "播放本段", exact: true }).click();
     await expect
       .poll(() => player.evaluate((node: HTMLAudioElement) => node.paused))
       .toBe(false);
     await player.evaluate((node: HTMLAudioElement) => {
-      node.currentTime = 5.1;
+      node.currentTime = 13.22;
     });
     await expect
       .poll(() => player.evaluate((node: HTMLAudioElement) => node.paused))
       .toBe(true);
     expect(
       await player.evaluate((node: HTMLAudioElement) => node.currentTime),
-    ).toBeCloseTo(5.14, 1);
+    ).toBeCloseTo(13.24, 1);
     await panel.getByRole("button", { name: "下一段", exact: true }).click();
     await expect(
       panel.getByRole("heading", { name: "第 2 题", exact: true }),
@@ -756,24 +756,24 @@ test.describe("Daily reading allows unanswered questions", () => {
     ).toHaveCount(0);
     expect(
       await player.evaluate((node: HTMLAudioElement) => node.currentTime),
-    ).toBeCloseTo(5.14, 1);
+    ).toBeCloseTo(0, 1);
     const suggestion = panel
       .locator(".listening-sentences li")
-      .first()
+      .nth(2)
       .getByText("建议听写", { exact: true });
     await expect(suggestion).toBeVisible();
     await panel
-      .getByRole("button", { name: "听写第 1 句", exact: true })
+      .getByRole("button", { name: "听写第 3 句", exact: true })
       .click();
     await panel
-      .getByLabel("第 1 句听写", { exact: true })
+      .getByLabel("第 3 句听写", { exact: true })
       .fill(
         "Please bring a notebook. The monthly membership costs twenty pounds.",
       );
     await panel.getByRole("button", { name: "核对听写", exact: true }).click();
     await expect(panel.getByText("✓ 全部正确", { exact: true })).toBeVisible();
     await panel
-      .getByRole("button", { name: "听写第 1 句", exact: true })
+      .getByRole("button", { name: "听写第 3 句", exact: true })
       .click();
     await expect(suggestion).toHaveCount(0);
     await expect(chip(2)).toHaveAttribute("data-dictation", "done");
@@ -1285,9 +1285,9 @@ test.describe("Daily reading allows unanswered questions", () => {
       single.answerJson = [{ ...original.answerJson[1], correctValue: 0 }];
       item.data.questions = [multi, single];
       const extra = Array.from(
-        { length: 18 },
+        { length: 40 },
         (_, index) =>
-          `[00:${((index + 1) * 0.25).toFixed(2)}]${["Everyone can share an idea about their favourite book.", "You can ask your partner to explain an unfamiliar word.", "The group practises everyday conversations together."][index % 3]}##这里可以交流阅读感受，也可以向伙伴询问不熟悉的词。`,
+          `[00:${((index + 1) * 0.1).toFixed(2)}]${["Everyone can share an idea about their favourite book.", "You can ask your partner to explain an unfamiliar word.", "The group practises everyday conversations together."][index % 3]}##这里可以交流阅读感受，也可以向伙伴询问不熟悉的词。`,
       ).join("\n");
       item.data.listenDetail = item.data.listenDetail.replace(
         "\n",
