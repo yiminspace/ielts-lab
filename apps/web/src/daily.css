@@ -908,6 +908,9 @@
 .listening-line-text {
   min-width: 0;
   overflow-wrap: anywhere;
+  cursor: text;
+  -webkit-user-select: text;
+  user-select: text;
 }
 .listening-line-text small {
   display: block;

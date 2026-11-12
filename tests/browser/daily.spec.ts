@@ -741,6 +741,34 @@ test.describe("Daily reading allows unanswered questions", () => {
       exact: true,
     });
     await expect(firstSentence).toBeFocused();
+    // Dragging the original text selects/copies it without restarting playback.
+    await player.evaluate((node: HTMLAudioElement) => node.pause());
+    const originalText = firstSentence.locator(".listening-line-text");
+    const textBox = (await originalText.boundingBox())!;
+    await page.mouse.move(textBox.x + 1, textBox.y + textBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(textBox.x + 65, textBox.y + textBox.height / 2, {
+      steps: 12,
+    });
+    await page.mouse.up();
+    const selectedText = await page.evaluate(() =>
+      window.getSelection()?.toString(),
+    );
+    expect(selectedText?.trim().length).toBeGreaterThan(0);
+    expect(await originalText.textContent()).toContain(selectedText);
+    expect(await player.evaluate((node: HTMLAudioElement) => node.paused)).toBe(
+      true,
+    );
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.keyboard.press("ControlOrMeta+c");
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+      selectedText,
+    );
+    await page.evaluate(() => window.getSelection()?.removeAllRanges());
+    await firstSentence.click();
+    await expect
+      .poll(() => player.evaluate((node: HTMLAudioElement) => node.paused))
+      .toBe(false);
     await page.keyboard.press("ArrowRight");
     await expect(
       panel.getByRole("button", { name: "播放第 2 句", exact: true }),
