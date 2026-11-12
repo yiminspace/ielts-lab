@@ -4,9 +4,12 @@ import { dictationDiff } from "../lib/dictation-diff.mjs";
 import type { DailyLesson } from "../lib/daily";
 import type { StudyItem } from "../types";
 import { mediaUrl, RichText, MarkdownText } from "../lib/content";
-import { assessRow, displayAnswer } from "../lib/questions.mjs";
+import { displayAnswer } from "../lib/questions.mjs";
 import { useProgress } from "../lib/progress";
-import { listeningSegments } from "../lib/listening-segments.mjs";
+import {
+  listeningSegments,
+  missedSegmentPositions,
+} from "../lib/listening-segments.mjs";
 import {
   ChevronLeft,
   ChevronRight,
@@ -124,20 +127,10 @@ function SegmentPlayer({
   const attemptAnswers = useProgress().attempts.find(
     (attempt) => attempt.id === lesson.attemptId,
   )?.answers;
-  const missed = useMemo(() => {
-    if (!attemptAnswers) return new Set<number>();
-    return new Set(
-      segments
-        .filter((part) =>
-          part.entries.some(({ row }) =>
-            ["incorrect", "blank"].includes(
-              assessRow(row, attemptAnswers[row.id]).status,
-            ),
-          ),
-        )
-        .map((part) => part.position),
-    );
-  }, [attemptAnswers, segments]);
+  const missed = useMemo(
+    () => missedSegmentPositions(segments, attemptAnswers),
+    [attemptAnswers, segments],
+  );
   const src = mediaUrl(item, item.data.audioUrl);
   const lines = segment?.lines ?? [];
   const activeLine = sentence === null ? null : lines[sentence];

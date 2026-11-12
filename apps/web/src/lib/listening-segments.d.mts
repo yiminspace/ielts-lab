@@ -17,3 +17,7 @@ export function listeningSegments(
   segments: ListeningSegment[];
   error: string;
 };
+export function missedSegmentPositions(
+  segments: ListeningSegment[],
+  answers: Record<string, string | string[]> | undefined,
+): Set<number>;
