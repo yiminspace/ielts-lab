@@ -647,12 +647,53 @@ test.describe("Daily reading allows unanswered questions", () => {
           JSON.stringify({ "0": "以前保存的句子笔记" }),
         );
     });
+    // The source attempt: Q1 and Q4 right, Q2 wrong, Q3 left blank.
+    await page.goto("/");
+    await page.evaluate(
+      async ({ hosted, id }) => {
+        const progress = await (await fetch("/api/progress")).json();
+        if (progress.attempts.some((attempt: any) => attempt.id === id)) return;
+        const attempt = {
+          id,
+          itemId: "demo-listening",
+          title: "Original listening fixture",
+          kind: "listening",
+          createdAt: new Date().toISOString(),
+          score: 2,
+          total: 4,
+          answers: { "0:0": "Monday", "0:1": "30", "0:3": "email" },
+        };
+        progress.attempts.push(attempt);
+        const response = await fetch(
+          hosted ? "/api/attempts" : "/api/progress",
+          {
+            method: hosted ? "POST" : "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(hosted ? attempt : progress),
+          },
+        );
+        if (!response.ok) throw new Error("Could not seed listening attempt");
+      },
+      { hosted: fixture.hosted, id: seed.attemptId },
+    );
     await page.goto(`/#/daily/${seed.id}`);
+    await page.reload();
     await page.getByRole("tab", { name: "分段听", exact: true }).click();
     const panel = page.getByRole("tabpanel", { name: "分段听", exact: true });
     await expect(
       panel.getByRole("heading", { name: "第 1 题", exact: true }),
     ).toBeVisible();
+    // Missed questions mark their segment and answer sentence for dictation.
+    const chip = (n: number) =>
+      panel.getByRole("button", { name: `第 ${n} 题`, exact: true });
+    await expect(chip(2)).toHaveAttribute("data-dictation", "todo");
+    await expect(chip(3)).toHaveAttribute("data-dictation", "todo");
+    await expect(chip(1)).not.toHaveAttribute("data-dictation", /.*/);
+    await expect(chip(4)).not.toHaveAttribute("data-dictation", /.*/);
+    await expect(panel.locator(".listening-segment-meta")).toContainText(
+      "错题句已听写 0/2",
+    );
+    await expect(panel.getByText("建议听写", { exact: true })).toHaveCount(0);
     for (const name of ["题目图示", "匹配选项图"]) {
       const diagram = panel.getByRole("img", { name, exact: true });
       await expect(diagram).toBeVisible();
@@ -706,6 +747,30 @@ test.describe("Daily reading allows unanswered questions", () => {
     expect(
       await player.evaluate((node: HTMLAudioElement) => node.currentTime),
     ).toBeCloseTo(5.14, 1);
+    const suggestion = panel
+      .locator(".listening-sentences li")
+      .first()
+      .getByText("建议听写", { exact: true });
+    await expect(suggestion).toBeVisible();
+    await panel
+      .getByRole("button", { name: "听写第 1 句", exact: true })
+      .click();
+    await panel
+      .getByLabel("第 1 句听写", { exact: true })
+      .fill(
+        "Please bring a notebook. The monthly membership costs twenty pounds.",
+      );
+    await panel.getByRole("button", { name: "核对听写", exact: true }).click();
+    await expect(panel.getByText("✓ 全部正确", { exact: true })).toBeVisible();
+    await panel
+      .getByRole("button", { name: "听写第 1 句", exact: true })
+      .click();
+    await expect(suggestion).toHaveCount(0);
+    await expect(chip(2)).toHaveAttribute("data-dictation", "done");
+    await expect(panel.locator(".listening-segment-meta")).toContainText(
+      "错题句已听写 1/2",
+    );
+    await panel.getByRole("radio", { name: "整段", exact: true }).click();
     await panel.getByLabel("分段听语速").selectOption("0.75");
     await panel.getByRole("button", { name: "重听本段", exact: true }).click();
     expect(
