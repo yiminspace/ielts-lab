@@ -93,11 +93,11 @@ test("difficulty labels appear in catalog and detail across refresh and mobile",
   await expect(row.getByText("雅思哥难度 0", { exact: true })).toBeVisible();
   await row.locator(".material-main").click();
   await expect(
-    page.locator(".item-toolbar").getByText("雅思哥难度 0", { exact: true }),
+    page.locator(".pf-identity").getByText("雅思哥难度 0", { exact: true }),
   ).toBeVisible();
   await page.reload();
   await expect(
-    page.locator(".item-toolbar").getByText("雅思哥难度 0", { exact: true }),
+    page.locator(".pf-identity").getByText("雅思哥难度 0", { exact: true }),
   ).toBeVisible();
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),

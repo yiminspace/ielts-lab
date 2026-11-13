@@ -1,3 +1,4 @@
+import MaterialDifficulty from "./MaterialDifficulty";
 import { ieltsExamAttrs } from "../lib/exam-theme";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, Bookmark, Menu, NotebookPen, X } from "lucide-react";
@@ -90,6 +91,7 @@ export default function PracticeFrame({
         <span className="ct-own-brand pf-brand">IELTS Lab</span>
         <div className="pf-identity">
           <strong>{item.title}</strong>
+          <MaterialDifficulty item={item} />
           <span>
             {skill} · {track}
             {item.source === "original" ? " · 原创练习" : ""}
