@@ -185,3 +185,75 @@ test("mobile keeps the shell compact and confines the wide matrix to its own scr
     page.getByRole("button", { name: "交卷检查", exact: true }),
   ).toBeVisible();
 });
+
+test("listening review underlines evidence across lines, jumps to notes and retries", async ({
+  page,
+}) => {
+  let calls = 0;
+  await page.route(
+    "**/api/items/demo-listening/listening-review/*",
+    async (route) => {
+      calls++;
+      expect(route.request().method()).toBe("POST");
+      expect(route.request().postData()).toBeNull();
+      if (calls === 1) return route.fulfill({ status: 503, json: {} });
+      return route.fulfill({
+        json: {
+          evidence: [
+            {
+              line: 0,
+              quotes: ["conversation club"],
+              answer: "A",
+              kind: "correct",
+              explanation: "这里说明有会话俱乐部。",
+            },
+            {
+              line: 2,
+              quotes: ["library", "garden"],
+              answer: "B",
+              kind: "correct",
+              explanation: "这里说明活动地点。",
+            },
+            {
+              line: 3,
+              quotes: ["no need to telephone"],
+              answer: "C",
+              kind: "distractor",
+              explanation: "这里排除了电话报名。",
+            },
+            {
+              line: 1,
+              quotes: ["invented quotation"],
+              answer: "D",
+              kind: "correct",
+              explanation: "这条不应显示。",
+            },
+          ],
+          unmentioned: ["录音没有提到游泳池。"],
+        },
+      });
+    },
+  );
+  await page.goto("/#/item/demo-listening");
+  await page.getByRole("button", { name: "交卷检查", exact: true }).click();
+  await page.getByRole("button", { name: "确认交卷", exact: true }).click();
+  expect(calls).toBe(0);
+  await page.getByRole("button", { name: "查看第 11–12 题解析" }).click();
+  const panel = page.getByRole("region", { name: "Listening transcript" });
+  await expect(panel.getByText("解析暂不可用")).toBeVisible();
+  await panel.getByRole("button", { name: "重试" }).click();
+  await expect(panel.locator("u")).toHaveText([
+    "conversation club",
+    "library",
+    "garden",
+    "no need to telephone",
+  ]);
+  await expect(panel.locator(".exam-evidence-note")).toHaveCount(3);
+  await page.getByRole("button", { name: /B · 依据/ }).click();
+  await expect(panel.locator(".exam-evidence-note.focused")).toContainText(
+    "这里说明活动地点。",
+  );
+  await page.getByRole("button", { name: "收起第 11–12 题解析" }).click();
+  await expect(panel.locator("u")).toHaveCount(0);
+  await expect(panel.locator(".exam-evidence-note")).toHaveCount(0);
+});

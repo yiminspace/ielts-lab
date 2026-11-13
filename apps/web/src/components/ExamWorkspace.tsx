@@ -49,6 +49,10 @@ import {
 } from "../lib/computer-test.mjs";
 import PracticeFrame from "./PracticeFrame";
 import { diagramMatchingMatrix } from "../lib/practice-matching.mjs";
+import {
+  TranscriptEvidence,
+  type ListeningReview,
+} from "../lib/listening-review";
 import { copyTranscript } from "../lib/transcript-copy";
 import { DailyAttemptBanner } from "./DailyWorkspace";
 import "../exam.css";
@@ -422,6 +426,7 @@ function ExamSession({
   const [transcriptTarget, setTranscriptTarget] = useState<{
     index: number;
     number: number;
+    evidence?: number;
   } | null>(null);
   const [translation, setTranslation] = useState(false);
   const [passageTranslation, setPassageTranslation] = useState(false);
@@ -433,6 +438,11 @@ function ExamSession({
   const [audioPlaying, setAudioPlaying] = useState(false);
   const [playbackQuestion, setPlaybackQuestion] = useState<string | null>(null);
   const [openSolutions, setOpenSolutions] = useState<string[]>([]);
+  const [reviewRowId, setReviewRowId] = useState<string | null>(null);
+  const [listeningReview, setListeningReview] =
+    useState<ListeningReview | null>(null);
+  const [reviewError, setReviewError] = useState(false);
+  const [reviewRetry, setReviewRetry] = useState(0);
   const [duration, setDuration] = useState(Number(data.seconds) || 0);
   const [speed, setSpeed] = useState(1);
   const [loop, setLoop] = useState(false);
@@ -466,6 +476,46 @@ function ExamSession({
     () => parseTranscript(data.listenDetail, duration),
     [data.listenDetail, duration],
   );
+  const reviewRow = rows.find((row) => row.id === reviewRowId);
+  const transcriptSource = data.listenDetail;
+  useEffect(() => {
+    if (!submitted || !reviewRowId) return;
+    const request = new AbortController();
+    void (async () => {
+      try {
+        const response = await fetch(
+          `/api/items/${encodeURIComponent(item.id)}/listening-review/${encodeURIComponent(reviewRowId)}`,
+          { method: "POST", signal: request.signal },
+        );
+        if (!response.ok) throw new Error("Listening review unavailable");
+        const review: ListeningReview = await response.json();
+        const reviewLines = parseTranscript(transcriptSource);
+        if (request.signal.aborted) return;
+        setListeningReview({
+          ...review,
+          evidence: review.evidence.filter(({ line, quotes }) =>
+            quotes.every(
+              (quote) => !!quote && reviewLines[line]?.text.includes(quote),
+            ),
+          ),
+        });
+      } catch {
+        if (!request.signal.aborted) setReviewError(true);
+      }
+    })();
+    return () => request.abort();
+  }, [item.id, transcriptSource, reviewRetry, reviewRowId, submitted]);
+  useEffect(() => {
+    const evidence = listeningReview?.evidence;
+    if (!reviewRow || !evidence?.length) return;
+    const first = evidence.reduce((best, entry) =>
+      entry.kind === "correct" &&
+      (best.kind !== "correct" || entry.line < best.line)
+        ? entry
+        : best,
+    );
+    setTranscriptTarget({ index: first.line, number: reviewRow.number });
+  }, [listeningReview, reviewRow?.number]);
   const currentLine = lines.findIndex(
     (line, i) =>
       audioTime >= line.start &&
@@ -540,7 +590,9 @@ function ExamSession({
     scrollQuestionWithinPane(
       transcriptPanel.current,
       transcriptPanel.current?.querySelector<HTMLElement>(
-        `[id="line-${transcriptTarget.index}"]`,
+        transcriptTarget.evidence === undefined
+          ? `[id="line-${transcriptTarget.index}"]`
+          : `[data-evidence-index="${transcriptTarget.evidence}"]`,
       ),
     );
   }, [transcriptOpen, transcriptTarget]);
@@ -704,6 +756,9 @@ function ExamSession({
     setSelectedLine(null);
     setPlaybackQuestion(null);
     setOpenSolutions([]);
+    setReviewRowId(null);
+    setListeningReview(null);
+    setReviewError(false);
     setAudioTime(0);
     if (audio.current) {
       audio.current.pause();
@@ -791,7 +846,10 @@ function ExamSession({
     if (!grade) return null;
     const result = grade.results.find((r) => r.id === row.id);
     const status = result?.status || "manual";
-    const expanded = openSolutions.includes(row.id);
+    const inlineReview = listening && row.supported && lines.length > 0;
+    const expanded = inlineReview
+      ? reviewRowId === row.id
+      : openSolutions.includes(row.id);
     const expected = compactAnswer(row);
     const completed =
       part === "summary" && status !== "manual"
@@ -862,6 +920,19 @@ function ExamSession({
             aria-controls={`solution-${row.id}`}
             onClick={() => {
               setActive(row.id);
+              if (inlineReview) {
+                setReviewRowId(expanded ? null : row.id);
+                setListeningReview(null);
+                setReviewError(false);
+                const index = resolveSolutionLine(row.solution, lines);
+                setTranscriptTarget(
+                  !expanded && index >= 0
+                    ? { index, number: row.number }
+                    : null,
+                );
+                if (!expanded) setTranscriptOpen(true);
+                return;
+              }
               setOpenSolutions((old) =>
                 expanded ? old.filter((id) => id !== row.id) : [...old, row.id],
               );
@@ -910,6 +981,27 @@ function ExamSession({
         {expected.alternatives.length > 0 && (
           <p>其他可接受答案：{expected.alternatives.join(" / ")}</p>
         )}
+        {inlineReview && listeningReview?.evidence.length ? (
+          <nav className="exam-evidence-links" aria-label="跳到听力依据">
+            {listeningReview.evidence.map((entry, index) => (
+              <button
+                className="exam-small"
+                key={index}
+                onClick={() => {
+                  setTranscriptOpen(true);
+                  setTranscriptTarget({
+                    index: entry.line,
+                    number: row.number,
+                    evidence: index,
+                  });
+                }}
+              >
+                {entry.answer} · {entry.kind === "correct" ? "依据" : "陷阱"} ·{" "}
+                {clock(lines[entry.line].start)}
+              </button>
+            ))}
+          </nav>
+        ) : null}
         <RichText html={row.solution.explain || "此题未保存详细解析。"} />
         {row.solution.keywords && (
           <details>
@@ -1676,6 +1768,38 @@ function ExamSession({
                     : "文字可拖选，点 ▶ 开始精听"}
                 </small>
               </div>
+              {submitted && reviewRow && (
+                <div className="exam-evidence-status" aria-live="polite">
+                  <strong>
+                    第 {reviewRow.number}
+                    {reviewRow.endNumber > reviewRow.number
+                      ? `–${reviewRow.endNumber}`
+                      : ""}{" "}
+                    题 · AI 解析
+                  </strong>
+                  {reviewError ? (
+                    <span>
+                      解析暂不可用{" "}
+                      <button
+                        className="exam-small"
+                        onClick={() => {
+                          setReviewError(false);
+                          setReviewRetry((count) => count + 1);
+                        }}
+                      >
+                        重试
+                      </button>
+                    </span>
+                  ) : !listeningReview ? (
+                    <span>正在查找原文依据…</span>
+                  ) : !listeningReview.evidence.length ? (
+                    <span>没有找到可引用的原文依据</span>
+                  ) : null}
+                  {listeningReview?.unmentioned.map((text, index) => (
+                    <small key={index}>{text}</small>
+                  ))}
+                </div>
+              )}
               <div className="exam-transcript" onCopy={copyTranscript}>
                 {lines.length ? (
                   lines.map((line, i) => (
@@ -1710,14 +1834,42 @@ function ExamSession({
                         </span>
                       </button>
                       <span className="exam-transcript-text">
-                        {transcriptTarget?.index === i && (
-                          <span className="exam-transcript-target">
-                            第 {transcriptTarget.number} 题依据
-                          </span>
-                        )}
-                        <span data-transcript-source>{line.text}</span>
+                        {!listeningReview?.evidence.length &&
+                          transcriptTarget?.index === i && (
+                            <span className="exam-transcript-target">
+                              第 {transcriptTarget.number} 题依据
+                            </span>
+                          )}
+                        <span data-transcript-source>
+                          <TranscriptEvidence
+                            text={line.text}
+                            evidence={
+                              listeningReview?.evidence.filter(
+                                (entry) => entry.line === i,
+                              ) || []
+                            }
+                          />
+                        </span>
                         {translation && line.translation && (
                           <small>{line.translation}</small>
+                        )}
+                        {listeningReview?.evidence.map(
+                          (entry, index) =>
+                            entry.line === i && (
+                              <span
+                                key={index}
+                                data-evidence-index={index}
+                                className={`exam-evidence-note ${entry.kind} ${transcriptTarget?.evidence === index ? "focused" : ""}`}
+                              >
+                                <strong>
+                                  {entry.answer} ·{" "}
+                                  {entry.kind === "correct"
+                                    ? "正确依据"
+                                    : "干扰项"}
+                                </strong>
+                                <span>{entry.explanation}</span>
+                              </span>
+                            ),
                         )}
                       </span>
                     </div>

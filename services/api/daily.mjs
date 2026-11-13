@@ -221,11 +221,11 @@ export function createRuntimeClient(env = process.env, fetcher = fetch) {
       controllers.delete(controller);
     }
   }
-  async function request(endpoint, ownerId, body) {
+  async function request(endpoint, ownerId, body, timeoutMs = 15000) {
     if (!configured) throw failure(503, "AI 服务尚未配置，作答与课程已保存");
     const controller = new AbortController();
     controllers.add(controller);
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     timeout.unref();
     try {
       const response = await fetcher(
@@ -269,6 +269,8 @@ export function createRuntimeClient(env = process.env, fetcher = fetch) {
   }
   return {
     configured,
+    listeningReview: (owner, source) =>
+      request("/listening/review", owner, source, 125000),
     capabilities: (owner) => request("/capabilities", owner),
     start: (owner, body) => request("/runs", owner, body),
     get: (owner, id) => request(`/runs/${encodeURIComponent(id)}`, owner),
