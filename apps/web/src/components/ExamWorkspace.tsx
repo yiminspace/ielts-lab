@@ -699,8 +699,8 @@ function ExamSession({
       .catch(() => setAudioError("播放未能启动，请点击音频控件重试。"));
   }
   function clearSegmentQueue() {
+    if (segmentQueue.current.length) setSentencePlayback(false);
     segmentQueue.current = [];
-    setSentencePlayback(false);
     setQueueActive(false);
   }
   function toggleSegment(index: number) {
@@ -814,6 +814,8 @@ function ExamSession({
     audio.current?.pause();
   }
   function reset() {
+    clearSegmentQueue();
+    setSelectedSegments([]);
     setReviewing(false);
     setAnswers({});
     setFlags([]);

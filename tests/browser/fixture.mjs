@@ -31,7 +31,14 @@ export async function startBrowserFixture(options = {}) {
         await admin.query(`DROP ROLE IF EXISTS "${role}"`);
       await admin.end();
     }
-    await fs.rm(root, { recursive: true, force: true });
+    // A response already in flight can finish writing after connections close.
+    // Retry transient ENOTEMPTY during disposal of this isolated fixture only.
+    await fs.rm(root, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    });
   }
   try {
     const env = {};
