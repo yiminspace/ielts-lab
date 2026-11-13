@@ -687,7 +687,7 @@ function ExamSession({
     if (!line || !audio.current) return;
     if (questionId !== null) setLoop(false);
     setPlaybackQuestion(questionId);
-    setSentencePlayback(questionId === null);
+    setSentencePlayback(true);
     setSelectedLine(index);
     audio.current.currentTime = line.start;
     audio.current
@@ -967,7 +967,7 @@ function ExamSession({
                 !canLocate
                   ? "这道题没有可定位的本地录音"
                   : listening
-                    ? "从答案对应句开始连续播放，并定位右侧原文"
+                    ? "播放答案对应句，句末停止，并定位右侧原文"
                     : "定位阅读原文依据"
               }
               aria-label={`${playing ? "暂停" : listening ? "播放" : "定位"}${label}${listening ? "录音" : "原文依据"}`}

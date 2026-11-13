@@ -74,7 +74,7 @@ test("copying a transcript selection includes only the selected original text", 
 });
 
 for (const width of [1440, 390]) {
-  test(`review playback keeps timestamps local and question playback continuous at ${width}px`, async ({
+  test(`review playback stops timestamps and question clips at sentence end at ${width}px`, async ({
     page,
     context,
   }) => {
@@ -114,16 +114,28 @@ for (const width of [1440, 390]) {
     await player.evaluate((node: HTMLAudioElement) => {
       node.currentTime = 5;
     });
-    await expect
-      .poll(() => player.evaluate((node: HTMLAudioElement) => node.currentTime))
-      .toBeGreaterThan(5.4);
+    await expect(player).toHaveJSProperty("paused", true);
+    expect(
+      await player.evaluate((node: HTMLAudioElement) => node.currentTime),
+    ).toBeCloseTo(5.143, 2);
+    await expect(
+      page.getByRole("button", { name: "播放第 1 题录音", exact: true }),
+    ).toBeVisible();
+
+    // Replaying starts at the answer sentence again and can be paused manually.
+    await page
+      .getByRole("button", { name: "播放第 1 题录音", exact: true })
+      .click();
     await expect(player).toHaveJSProperty("paused", false);
+    expect(
+      await player.evaluate((node: HTMLAudioElement) => node.currentTime),
+    ).toBeLessThan(1);
     await page
       .getByRole("button", { name: "暂停第 1 题录音", exact: true })
       .click();
     await expect(player).toHaveJSProperty("paused", true);
 
-    // Switching back from continuous playback restores the sentence boundary.
+    // Switching from a question clip to a timestamp updates the sentence boundary.
     await page
       .getByRole("button", { name: "播放第 1 题录音", exact: true })
       .click();
