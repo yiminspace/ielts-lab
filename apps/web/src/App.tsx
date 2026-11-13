@@ -1,4 +1,3 @@
-import MaterialDifficulty from "./components/MaterialDifficulty";
 import AccountTools from "./components/AccountTools";
 import { useRuntime } from "./lib/runtime";
 import { Component, useEffect, useMemo, useState, type ReactNode } from "react";
@@ -75,7 +74,11 @@ function MaterialLabels({ item }: { item: LibraryItem }) {
   return (
     <span className="material-labels">
       <span>{trackNames[item.testTrack || "unclassified"]}</span>
-      <MaterialDifficulty item={item} />
+      <span title="沿用归档的原始难度值，0–3 的中文等级含义尚待核实。">
+        {item.difficulty === undefined
+          ? "难度未提供"
+          : `雅思哥难度 ${item.difficulty}`}
+      </span>
       {item.source === "original" && <span>原创练习 · 非官方真题</span>}
     </span>
   );
