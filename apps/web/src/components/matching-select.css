@@ -1,0 +1,37 @@
+.computer-test .matching-select {
+  position: relative;
+  display: inline-grid;
+  width: 88px;
+  max-width: 100%;
+  vertical-align: middle;
+}
+.computer-test .matching-select.matching-select select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 36px;
+  margin: 0;
+  appearance: none;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  cursor: pointer;
+}
+.computer-test .matching-select.matching-select select option {
+  color: var(--ct-fg);
+  background: var(--ct-panel);
+  -webkit-text-fill-color: var(--ct-fg);
+}
+.computer-test .matching-select-value {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 10px;
+  pointer-events: none;
+  color: var(--ct-fg);
+}
+.computer-test .matching-select.matching-select select:disabled {
+  cursor: default;
+}
