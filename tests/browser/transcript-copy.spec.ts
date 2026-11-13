@@ -138,5 +138,30 @@ for (const width of [1440, 390]) {
     await expect(
       page.getByRole("button", { name: "播放第 1 题录音", exact: true }),
     ).toBeVisible();
+
+    // The native play button takes over after a sentence stops.
+    const bounds = await player.boundingBox();
+    await player.click({ position: { x: 18, y: bounds!.height / 2 } });
+    await expect(player).toHaveJSProperty("paused", false);
+    await expect
+      .poll(() => player.evaluate((node: HTMLAudioElement) => node.currentTime))
+      .toBeGreaterThan(9.6);
+    await player.evaluate((node: HTMLAudioElement) => {
+      node.pause();
+    });
+
+    // Keyboard input on the main player must also release a sentence boundary,
+    // allowing a subsequent seek beyond it instead of snapping back.
+    await timestamps.nth(0).click();
+    await player.evaluate((node: HTMLAudioElement) => {
+      node.currentTime = 5;
+    });
+    await expect(player).toHaveJSProperty("paused", true);
+    await player.press("ArrowRight");
+    await player.evaluate((node: HTMLAudioElement) => {
+      node.currentTime = 12;
+      node.dispatchEvent(new Event("timeupdate"));
+    });
+    await expect(player).toHaveJSProperty("currentTime", 12);
   });
 }

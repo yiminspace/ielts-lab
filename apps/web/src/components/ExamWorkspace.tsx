@@ -694,6 +694,11 @@ function ExamSession({
       .play()
       .catch(() => setAudioError("播放未能启动，请点击音频控件重试。"));
   }
+  function useMainAudioControls() {
+    setSentencePlayback(false);
+    setPlaybackQuestion(null);
+    setLoop(false);
+  }
   function tickAudio() {
     const player = audio.current;
     if (!player) return;
@@ -1446,6 +1451,13 @@ function ExamSession({
                 src={src}
                 controls
                 preload="metadata"
+                // Native controls take over from transcript/question playback.
+                // Handle user input rather than play/seek events, which are also
+                // emitted by programmatic sentence playback and boundary stops.
+                onPointerDownCapture={useMainAudioControls}
+                onMouseDownCapture={useMainAudioControls}
+                onFocusCapture={useMainAudioControls}
+                onKeyDownCapture={useMainAudioControls}
                 onTimeUpdate={tickAudio}
                 onPlay={() => {
                   setAudioPlaying(true);
