@@ -42,6 +42,7 @@ import {
   compactAnswer,
   completedBlankAnswer,
   resolveSolutionLine,
+  supportsTranscriptEvidence,
 } from "../lib/question-review.mjs";
 import {
   scrollQuestionWithinPane,
@@ -846,7 +847,10 @@ function ExamSession({
     if (!grade) return null;
     const result = grade.results.find((r) => r.id === row.id);
     const status = result?.status || "manual";
-    const inlineReview = listening && row.supported && lines.length > 0;
+    const inlineReview =
+      listening &&
+      lines.length > 0 &&
+      supportsTranscriptEvidence(row, groups[Number(row.id.split(":")[0])]);
     const expanded = inlineReview
       ? reviewRowId === row.id
       : openSolutions.includes(row.id);

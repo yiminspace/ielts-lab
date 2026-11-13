@@ -256,4 +256,8 @@ test("listening review underlines evidence across lines, jumps to notes and retr
   await page.getByRole("button", { name: "收起第 11–12 题解析" }).click();
   await expect(panel.locator("u")).toHaveCount(0);
   await expect(panel.locator(".exam-evidence-note")).toHaveCount(0);
+  await page.getByRole("button", { name: "查看第 15 题解析" }).click();
+  await expect(page.getByText("Original explanation.").first()).toBeVisible();
+  await expect(panel.getByText(/第 15 题 · AI 解析/)).toHaveCount(0);
+  expect(calls).toBe(2);
 });

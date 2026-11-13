@@ -3,7 +3,10 @@ import {
   displayAnswer,
   parseTranscript,
 } from "../../apps/web/src/lib/questions.mjs";
-import { resolveSolutionLine } from "../../apps/web/src/lib/question-review.mjs";
+import {
+  resolveSolutionLine,
+  supportsTranscriptEvidence,
+} from "../../apps/web/src/lib/question-review.mjs";
 
 export function listeningReviewSource(item, rowId) {
   if (item?.kind !== "listening") return null;
@@ -13,7 +16,7 @@ export function listeningReviewSource(item, rowId) {
     entry.rows.some((row) => row.id === rowId),
   );
   const row = group?.rows.find((entry) => entry.id === rowId);
-  if (!row?.supported) return null;
+  if (!row || !supportsTranscriptEvidence(row, group)) return null;
   const lines = parseTranscript(data.listenDetail, Number(data.seconds) || 0);
   if (!lines.length) return null;
   const anchor = resolveSolutionLine(row.solution, lines);
