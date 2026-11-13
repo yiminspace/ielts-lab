@@ -1,3 +1,4 @@
+import MaterialDifficulty from "./components/MaterialDifficulty";
 import AccountTools from "./components/AccountTools";
 import { useRuntime } from "./lib/runtime";
 import { Component, useEffect, useMemo, useState, type ReactNode } from "react";
@@ -74,6 +75,7 @@ function MaterialLabels({ item }: { item: LibraryItem }) {
   return (
     <span className="material-labels">
       <span>{trackNames[item.testTrack || "unclassified"]}</span>
+      <MaterialDifficulty item={item} />
       {item.source === "original" && <span>原创练习 · 非官方真题</span>}
     </span>
   );

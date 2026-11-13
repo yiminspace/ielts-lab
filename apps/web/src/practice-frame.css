@@ -270,12 +270,14 @@
   font-size: 18px;
 }
 .practice-frame.pf-compact .pf-identity {
-  flex-direction: row;
-  align-items: baseline;
-  gap: 12px;
+  flex-direction: column;
+  gap: 2px;
 }
 .practice-frame.pf-compact .pf-identity span {
   display: none;
+}
+.practice-frame.pf-compact .pf-identity > .material-difficulty {
+  display: block;
 }
 .practice-frame.pf-compact .pf-status,
 .practice-frame.pf-compact .pf-header-actions {

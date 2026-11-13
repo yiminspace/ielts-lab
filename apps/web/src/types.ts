@@ -16,6 +16,7 @@ export interface LibraryItem {
   kind: Kind;
   collection: string;
   count?: number;
+  difficulty?: 0 | 1 | 2 | 3;
   description?: string;
   testTrack?: TestTrack;
   source?: "archive" | "original";
