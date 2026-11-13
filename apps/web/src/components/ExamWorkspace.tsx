@@ -450,6 +450,9 @@ function ExamSession({
   const [loop, setLoop] = useState(false);
   const [selectedLine, setSelectedLine] = useState<number | null>(null);
   const [audioError, setAudioError] = useState("");
+  const [selectedSegments, setSelectedSegments] = useState<number[]>([]);
+  const segmentQueue = useRef<number[]>([]);
+  const [queueActive, setQueueActive] = useState(false);
   const audio = useRef<HTMLAudioElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const panes = useRef<HTMLDivElement>(null);
@@ -685,6 +688,7 @@ function ExamSession({
   function playLine(index: number, questionId: string | null = null) {
     const line = lines[index];
     if (!line || !audio.current) return;
+    clearSegmentQueue();
     if (questionId !== null) setLoop(false);
     setPlaybackQuestion(questionId);
     setSentencePlayback(true);
@@ -694,7 +698,37 @@ function ExamSession({
       .play()
       .catch(() => setAudioError("播放未能启动，请点击音频控件重试。"));
   }
+  function clearSegmentQueue() {
+    if (segmentQueue.current.length) setSentencePlayback(false);
+    segmentQueue.current = [];
+    setQueueActive(false);
+  }
+  function toggleSegment(index: number) {
+    if (segmentQueue.current.length) audio.current?.pause();
+    clearSegmentQueue();
+    setSelectedSegments((old) =>
+      old.includes(index)
+        ? old.filter((i) => i !== index)
+        : [...old, index].sort((a, b) => a - b),
+    );
+  }
+  function playSegments() {
+    const player = audio.current;
+    if (!player || !selectedSegments.length) return;
+    segmentQueue.current = [...selectedSegments];
+    setQueueActive(true);
+    setLoop(false);
+    setSentencePlayback(true);
+    setPlaybackQuestion(null);
+    setSelectedLine(selectedSegments[0]);
+    player.currentTime = lines[selectedSegments[0]].start;
+    void player.play().catch(() => {
+      clearSegmentQueue();
+      setAudioError("播放未能启动，请点击连播按钮重试。");
+    });
+  }
   function useMainAudioControls() {
+    clearSegmentQueue();
     setSentencePlayback(false);
     setPlaybackQuestion(null);
     setLoop(false);
@@ -702,6 +736,30 @@ function ExamSession({
   function tickAudio() {
     const player = audio.current;
     if (!player) return;
+    const queue = segmentQueue.current;
+    const queuedLine = queue.length ? lines[queue[0]] : null;
+    if (queuedLine) {
+      if (player.currentTime >= queuedLine.end) {
+        queue.shift();
+        if (queue.length) {
+          setSelectedLine(queue[0]);
+          player.currentTime = lines[queue[0]].start;
+          if (player.paused)
+            void player.play().catch(() => {
+              clearSegmentQueue();
+              setAudioError("播放未能启动，请点击连播按钮重试。");
+            });
+        } else {
+          player.pause();
+          player.currentTime = queuedLine.end;
+          clearSegmentQueue();
+          setSentencePlayback(false);
+          setAudioPlaying(false);
+        }
+      }
+      setAudioTime(player.currentTime);
+      return;
+    }
     const line = selectedLine !== null ? lines[selectedLine] : null;
     if (sentencePlayback && !loop && line && player.currentTime >= line.end) {
       player.pause();
@@ -732,6 +790,7 @@ function ExamSession({
     selectedLine,
     lines,
     loop,
+    queueActive,
   ]);
   function submit() {
     if (submitted) return;
@@ -755,6 +814,8 @@ function ExamSession({
     audio.current?.pause();
   }
   function reset() {
+    clearSegmentQueue();
+    setSelectedSegments([]);
     setReviewing(false);
     setAnswers({});
     setFlags([]);
@@ -1476,6 +1537,10 @@ function ExamSession({
                   )
                 }
                 onEnded={() => {
+                  if (segmentQueue.current.length) {
+                    tickAudio();
+                    return;
+                  }
                   setAudioPlaying(false);
                   if (
                     playbackQuestion === null &&
@@ -1512,6 +1577,75 @@ function ExamSession({
             >
               {transcriptOpen ? "收起原文" : "精听 · 原文"}
             </button>
+            {submitted && src && lines.length > 0 && (
+              <div className="exam-segment-review" aria-label="复盘分段连播">
+                <div className="exam-segment-track" aria-label="各段时间点">
+                  <span
+                    className="exam-segment-progress"
+                    style={{
+                      width: `${duration > 0 ? Math.min(100, (audioTime / duration) * 100) : 0}%`,
+                    }}
+                  />
+                  {lines.map((line, i) => (
+                    <button
+                      key={i}
+                      className={`exam-segment-dot ${selectedSegments.includes(i) ? "selected" : ""} ${currentLine === i ? "current" : ""}`}
+                      style={{
+                        left: `${duration > 0 ? Math.min(100, (line.start / duration) * 100) : 0}%`,
+                      }}
+                      aria-label={`选择第 ${i + 1} 段（${clock(line.start)}）`}
+                      aria-pressed={selectedSegments.includes(i)}
+                      title={`第 ${i + 1} 段 · ${clock(line.start)} · ${line.text}`}
+                      onClick={() => toggleSegment(i)}
+                    />
+                  ))}
+                </div>
+                <div className="exam-segment-options" aria-label="选择连播段落">
+                  {lines.map((line, i) => (
+                    <label key={i} title={line.text}>
+                      <input
+                        type="checkbox"
+                        checked={selectedSegments.includes(i)}
+                        onChange={() => toggleSegment(i)}
+                      />
+                      {i + 1} · {clock(line.start)}
+                    </label>
+                  ))}
+                </div>
+                <div className="exam-segment-actions">
+                  <small aria-live="polite">
+                    已选 {selectedSegments.length} 段 · 按原文顺序连播
+                  </small>
+                  <button
+                    disabled={!selectedSegments.length}
+                    onClick={() => {
+                      if (queueActive && audioPlaying) audio.current?.pause();
+                      else if (queueActive)
+                        void audio.current
+                          ?.play()
+                          .catch(() => setAudioError("播放未能启动，请重试。"));
+                      else playSegments();
+                    }}
+                  >
+                    {queueActive
+                      ? audioPlaying
+                        ? "暂停连播"
+                        : "继续连播"
+                      : "播放所选"}
+                  </button>
+                  <button
+                    disabled={!selectedSegments.length}
+                    onClick={() => {
+                      if (segmentQueue.current.length) audio.current?.pause();
+                      clearSegmentQueue();
+                      setSelectedSegments([]);
+                    }}
+                  >
+                    清空选择
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ) : null
       }
@@ -1781,6 +1915,8 @@ function ExamSession({
                     type="checkbox"
                     checked={loop}
                     onChange={(e) => {
+                      if (segmentQueue.current.length) audio.current?.pause();
+                      clearSegmentQueue();
                       setLoop(e.target.checked);
                       if (e.target.checked && selectedLine === null)
                         setSelectedLine(Math.max(currentLine, 0));

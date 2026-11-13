@@ -1193,3 +1193,83 @@
 .exam-evidence-note.focused {
   outline: 1px solid var(--evidence-color);
 }
+
+/* Review markers share the recording's time scale; chips remain usable when
+   nearby timestamps would overlap, and scroll locally on narrow screens. */
+.practice-frame .exam-audio-bar:has(.exam-segment-review) {
+  flex-wrap: wrap;
+}
+.exam-segment-review {
+  flex: 0 0 100%;
+  min-width: 0;
+}
+.exam-segment-track {
+  position: relative;
+  height: 28px;
+  margin: 0 10px;
+  background: linear-gradient(var(--ct-line), var(--ct-line)) center / 100% 3px
+    no-repeat;
+}
+.exam-segment-progress {
+  position: absolute;
+  top: 13px;
+  left: 0;
+  height: 3px;
+  background: var(--ct-fg);
+}
+.computer-test .exam-segment-dot {
+  position: absolute;
+  top: 6px;
+  transform: translateX(-50%);
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  border: 2px solid var(--ct-muted);
+  border-radius: 50%;
+  background: var(--ct-bg);
+}
+.computer-test .exam-segment-dot.selected {
+  background: var(--ct-fg);
+  border-color: var(--ct-fg);
+}
+.computer-test .exam-segment-dot.current {
+  outline: 2px solid var(--ct-fg);
+  outline-offset: 2px;
+}
+.exam-segment-options {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 0 8px;
+}
+.exam-segment-options label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  border: 1px solid var(--ct-line);
+  padding: 5px 8px;
+  cursor: pointer;
+}
+.exam-segment-options label:has(:checked) {
+  background: var(--ct-fg);
+  color: var(--ct-bg);
+}
+.exam-segment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.exam-segment-actions small {
+  margin-right: auto;
+  color: var(--ct-muted);
+}
+.practice-frame .exam-audio-bar .exam-segment-options label {
+  margin-left: 0;
+  font-size: 12px;
+}
+.computer-test .exam-audio-bar .exam-segment-dot {
+  padding: 0;
+}

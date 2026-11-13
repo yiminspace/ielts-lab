@@ -107,6 +107,17 @@ for (const width of [1440, 390]) {
     await expect
       .poll(() => player.evaluate((node: HTMLAudioElement) => node.currentTime))
       .toBeLessThan(1);
+    // Turning off an ordinary sentence loop must still stop at this sentence's end.
+    await loop.uncheck();
+    await player.evaluate((node: HTMLAudioElement) => {
+      node.currentTime = 5.15;
+      node.dispatchEvent(new Event("timeupdate"));
+    });
+    await expect(player).toHaveJSProperty("paused", true);
+    expect(
+      await player.evaluate((node: HTMLAudioElement) => node.currentTime),
+    ).toBeCloseTo(5.143, 2);
+    await loop.check();
     await page
       .getByRole("button", { name: "播放第 1 题录音", exact: true })
       .click();
@@ -171,9 +182,146 @@ for (const width of [1440, 390]) {
     await expect(player).toHaveJSProperty("paused", true);
     await player.press("ArrowRight");
     await player.evaluate((node: HTMLAudioElement) => {
+      node.pause();
       node.currentTime = 12;
       node.dispatchEvent(new Event("timeupdate"));
     });
     await expect(player).toHaveJSProperty("currentTime", 12);
+  });
+}
+
+for (const width of [1440, 390]) {
+  test(`review selected segments play in source order and skip gaps at ${width}px`, async ({
+    page,
+    context,
+  }) => {
+    if (fixture.hosted) await seedIdentity(context);
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/#/item/demo-listening");
+    await expect(page.getByLabel("复盘分段连播", { exact: true })).toHaveCount(
+      0,
+    );
+    await page.getByRole("button", { name: "交卷检查", exact: true }).click();
+    await page.getByRole("button", { name: "确认交卷", exact: true }).click();
+    await page.reload();
+    const review = page.getByLabel("复盘分段连播", { exact: true });
+    const dots = review.locator(".exam-segment-dot");
+    const choices = review.getByRole("checkbox");
+    const player = page.locator('audio[aria-label="听力录音"]');
+    await expect(dots).toHaveCount(4);
+    await expect(
+      review.getByRole("button", { name: "播放所选", exact: true }),
+    ).toBeDisabled();
+    // Select in reverse order, mixing the timeline and precise timestamp chips.
+    await choices.nth(2).check();
+    await dots.nth(0).click();
+    await expect(choices.nth(0)).toBeChecked();
+    await expect(dots.nth(2)).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("combobox", { name: "播放速度" }).selectOption("2");
+    await review.getByRole("button", { name: "播放所选", exact: true }).click();
+    await expect(player).toHaveJSProperty("paused", false);
+    expect(
+      await player.evaluate((node: HTMLAudioElement) => node.currentTime),
+    ).toBeLessThan(1);
+    await review.getByRole("button", { name: "暂停连播", exact: true }).click();
+    await expect(player).toHaveJSProperty("paused", true);
+    await review.getByRole("button", { name: "继续连播", exact: true }).click();
+    await player.evaluate((node: HTMLAudioElement) => {
+      node.currentTime = 5.15;
+      node.dispatchEvent(new Event("timeupdate"));
+    });
+    await expect
+      .poll(() => player.evaluate((node: HTMLAudioElement) => node.currentTime))
+      .toBeGreaterThanOrEqual(9.26);
+    await expect(player).toHaveJSProperty("paused", false);
+    await player.evaluate((node: HTMLAudioElement) => {
+      node.currentTime = 13.38;
+      node.dispatchEvent(new Event("timeupdate"));
+    });
+    await expect(player).toHaveJSProperty("paused", true);
+    await expect(
+      review.getByRole("button", { name: "播放所选", exact: true }),
+    ).toBeVisible();
+    await review.getByRole("button", { name: "播放所选", exact: true }).click();
+    // Editing selection cancels a running queue.
+    await choices.nth(2).uncheck();
+    await expect(player).toHaveJSProperty("paused", true);
+    await review.getByRole("button", { name: "播放所选", exact: true }).click();
+    await player.press("ArrowRight");
+    await player.evaluate((node: HTMLAudioElement) => {
+      node.pause();
+      node.currentTime = 12;
+      node.dispatchEvent(new Event("timeupdate"));
+    });
+    await expect(player).toHaveJSProperty("currentTime", 12);
+    await review.getByRole("button", { name: "清空选择", exact: true }).click();
+    await expect(choices.nth(0)).not.toBeChecked();
+    // The recording's natural end also completes a queue containing the last line.
+    await choices.nth(3).check();
+    await review.getByRole("button", { name: "播放所选", exact: true }).click();
+    await player.evaluate((node: HTMLAudioElement) => {
+      node.currentTime = node.duration - 0.12;
+    });
+    await expect(player).toHaveJSProperty("paused", true);
+    await expect(
+      review.getByRole("button", { name: "播放所选", exact: true }),
+    ).toBeVisible();
+    await choices.nth(0).check();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: `test-results/review-segments-${width}.png`,
+      fullPage: true,
+    });
+    await page.reload();
+    await expect(
+      review.getByRole("button", { name: "播放所选", exact: true }),
+    ).toBeDisabled();
+    await expect(player).toHaveJSProperty("paused", true);
+  });
+}
+
+for (const paused of [false, true]) {
+  test(`restarting an attempt clears the ${paused ? "paused" : "playing"} segment queue`, async ({
+    page,
+    context,
+  }) => {
+    if (fixture.hosted) await seedIdentity(context);
+    await page.goto("/#/item/demo-listening");
+    await page.getByRole("button", { name: "交卷检查", exact: true }).click();
+    await page.getByRole("button", { name: "确认交卷", exact: true }).click();
+    const review = page.getByLabel("复盘分段连播", { exact: true });
+    await review.getByRole("checkbox").nth(0).check();
+    await review.getByRole("checkbox").nth(2).check();
+    await review.getByRole("button", { name: "播放所选", exact: true }).click();
+    if (paused)
+      await review
+        .getByRole("button", { name: "暂停连播", exact: true })
+        .click();
+    await page.getByRole("button", { name: "重新作答", exact: true }).click();
+    await page.getByRole("button", { name: "开始练习", exact: true }).click();
+    await expect(review).toHaveCount(0);
+    const player = page.locator('audio[aria-label="听力录音"]');
+    await expect(player).toHaveJSProperty("paused", false);
+    await player.evaluate((node: HTMLAudioElement) => {
+      node.currentTime = 5.2;
+      node.dispatchEvent(new Event("timeupdate"));
+    });
+    expect(
+      await player.evaluate((node: HTMLAudioElement) => node.currentTime),
+    ).toBeLessThan(6);
+    await player.evaluate((node: HTMLAudioElement) => {
+      node.currentTime = 13.3;
+      node.dispatchEvent(new Event("timeupdate"));
+    });
+    await expect(player).toHaveJSProperty("paused", false);
+    await page.getByRole("button", { name: "交卷检查", exact: true }).click();
+    await page.getByRole("button", { name: "确认交卷", exact: true }).click();
+    await expect(
+      review.getByRole("button", { name: "播放所选", exact: true }),
+    ).toBeDisabled();
   });
 }
