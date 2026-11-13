@@ -381,6 +381,13 @@ export async function loadLibrary({ archiveRoot, forceDemo = false } = {}) {
             count: countFor(kind, data),
             source: "archive",
           };
+          if (
+            Number.isInteger(data.difficulty) &&
+            data.difficulty >= 0 &&
+            data.difficulty <= 3
+          ) {
+            item.difficulty = data.difficulty;
+          }
           item.testTrack = archiveItemTrack(item, data, trackMemberships);
           if (["listening", "reading", "writing"].includes(kind)) {
             const sourceId =

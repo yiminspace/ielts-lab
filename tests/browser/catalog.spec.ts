@@ -62,3 +62,48 @@ test("material rows retain practice count and latest result across refresh and m
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);
 });
+
+test("difficulty labels appear in catalog and detail across refresh and mobile", async ({
+  page,
+  context,
+}) => {
+  if (fixture.hosted) await seedIdentity(context);
+  await page.route("**/api/library", async (route) => {
+    const response = await route.fetch();
+    const library = await response.json();
+    const listening = library.items.find(
+      (item: { id: string }) => item.id === "demo-listening",
+    );
+    listening.difficulty = 0;
+    await route.fulfill({ response, json: library });
+  });
+  await page.route("**/api/items/demo-listening", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      json: { ...(await response.json()), difficulty: 0 },
+    });
+  });
+  await page.goto("/#/library/listening");
+  const row = page.locator(".material-row").filter({ hasText: "雅思哥难度 0" });
+  await expect(row).toHaveCount(1);
+  await page.reload();
+  await expect(row).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(row.getByText("雅思哥难度 0", { exact: true })).toBeVisible();
+  await row.locator(".material-main").click();
+  await expect(
+    page.locator(".item-toolbar").getByText("雅思哥难度 0", { exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(
+    page.locator(".item-toolbar").getByText("雅思哥难度 0", { exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+  await page.goto("/#/library/reading");
+  await expect(
+    page.getByText("难度未提供", { exact: true }).first(),
+  ).toBeVisible();
+});
