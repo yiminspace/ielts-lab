@@ -1,4 +1,4 @@
-import type { QuestionRow } from "./questions.mjs";
+import type { QuestionGroup, QuestionRow } from "./questions.mjs";
 
 export function resolveSolutionLine(
   solution: unknown,
@@ -9,3 +9,7 @@ export function compactAnswer(row: QuestionRow): {
   alternatives: string[];
 };
 export function completedBlankAnswer(row: QuestionRow): string | null;
+export function supportsTranscriptEvidence(
+  row: QuestionRow,
+  group: QuestionGroup,
+): boolean;

@@ -74,3 +74,13 @@ export function completedBlankAnswer(row) {
       .find(Boolean) ?? null
   );
 }
+
+// Letter-only diagram options need the image to establish what each label means.
+export function supportsTranscriptEvidence(row, group) {
+  return (
+    row.supported &&
+    !(
+      group.optionsImage && row.options.some((option) => !option.content.trim())
+    )
+  );
+}

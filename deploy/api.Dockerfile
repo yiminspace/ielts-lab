@@ -11,7 +11,7 @@ ENV NODE_ENV=production HOST=0.0.0.0 PORT=4318
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY package.json ./
 COPY services/api ./services/api
-COPY apps/web/src/lib/questions.mjs apps/web/src/lib/test-track.mjs ./apps/web/src/lib/
+COPY apps/web/src/lib/questions.mjs apps/web/src/lib/question-review.mjs apps/web/src/lib/test-track.mjs ./apps/web/src/lib/
 RUN mkdir -p /data/recordings /data/daily && chown node:node /data/recordings /data/daily
 ARG GIT_SHA=dev
 ENV GIT_SHA=${GIT_SHA}

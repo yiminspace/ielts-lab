@@ -9,8 +9,10 @@ import httpx
 from agent_runtime import create_app
 from fastapi import HTTPException, Request, Response
 from pydantic import BaseModel, Field
+from pydantic_ai.exceptions import AgentRunError
 
 from .gateway import PydanticGateway, gateway_from_env
+from .listening_review import ReviewSource, generate_listening_review
 from .workflows import create_workflows
 
 MAX_AUDIO = 32 * 1024 * 1024
@@ -45,7 +47,7 @@ def build_app(
         workflows=create_workflows(gateway),
         database_path=str(database_path or os.getenv("RUNTIME_DATABASE", ".local/runtime.sqlite")),
         token=token,
-        request_body_limits={"/speech/transcribe": MAX_AUDIO},
+        request_body_limits={"/speech/transcribe": MAX_AUDIO, "/listening/review": 512 * 1024},
     )
     runtime_lifespan = app.router.lifespan_context
 
@@ -78,6 +80,16 @@ def build_app(
             "asr": configured and bool(os.getenv("IELTS_ASR_MODEL")),
             "tts": configured and bool(os.getenv("IELTS_TTS_MODEL")),
         }
+
+    @app.post("/listening/review")
+    async def listening_review(request: Request, source: ReviewSource):
+        authorize(request)
+        if gateway.model is None:
+            raise HTTPException(503, "Listening review model is not configured")
+        try:
+            return await generate_listening_review(gateway, source)
+        except (AgentRunError, httpx.HTTPError, TimeoutError):
+            raise HTTPException(502, "Listening review temporarily unavailable") from None
 
     async def speech_request(endpoint: str, **kwargs) -> httpx.Response:
         base = os.getenv("IELTS_LLM_BASE_URL", "").rstrip("/")

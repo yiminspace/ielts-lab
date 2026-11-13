@@ -139,3 +139,59 @@ def test_dictation_run_uses_authenticated_runtime_and_offline_model(tmp_path):
             ).status_code
             == 404
         )
+
+
+def test_listening_review_requires_auth_and_validates_verbatim_quotes(tmp_path):
+    from pydantic_ai.messages import ModelResponse, ToolCallPart
+    from pydantic_ai.models.function import FunctionModel
+
+    calls = 0
+
+    def reply(messages, info):
+        nonlocal calls
+        calls += 1
+        return ModelResponse(
+            parts=[
+                ToolCallPart(
+                    info.output_tools[0].name,
+                    {
+                        "evidence": [
+                            {
+                                "line": 7,
+                                "quotes": ["invented" if calls == 1 else "on Tuesday"],
+                                "answer": "A",
+                                "kind": "correct",
+                                "explanation": "活动在周二举行。",
+                            },
+                            {
+                                "line": 9,
+                                "quotes": ["all members"],
+                                "answer": "B",
+                                "kind": "correct",
+                                "explanation": "每位会员都可以参加。",
+                            },
+                        ],
+                        "unmentioned": [],
+                    },
+                )
+            ]
+        )
+
+    app = build_app(
+        gateway=PydanticGateway(FunctionModel(reply)),
+        database_path=tmp_path / "runs.sqlite",
+        token=TOKEN,
+    )
+    source = {
+        "question": {"prompt": "Which TWO statements are true?"},
+        "lines": [
+            {"index": 7, "text": "The group meets on Tuesday."},
+            {"index": 9, "text": "It's open to all members."},
+        ],
+    }
+    with TestClient(app) as client:
+        assert client.post("/listening/review", json=source).status_code == 401
+        response = client.post("/listening/review", headers=AUTH, json=source)
+        assert response.status_code == 200
+        assert calls == 2
+        assert [entry["line"] for entry in response.json()["evidence"]] == [7, 9]

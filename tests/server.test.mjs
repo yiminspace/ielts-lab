@@ -4,7 +4,11 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import http from "node:http";
-import { createApp, parseRange, validProgress } from "../services/api/index.mjs";
+import {
+  createApp,
+  parseRange,
+  validProgress,
+} from "../services/api/index.mjs";
 import { loadLibrary, validateArchive } from "../services/api/library.mjs";
 import { generalTrainingItems } from "../services/api/general-training.mjs";
 import { importSummary } from "../services/api/import.mjs";
@@ -590,4 +594,36 @@ test("an archive cannot redirect its media directory outside the chosen root", a
   await fs.rm(f.mediaRoot, { recursive: true });
   await fs.symlink(f.root, f.mediaRoot);
   await assert.rejects(() => validateArchive(f.archive));
+});
+
+test("listening evidence uses the archive answer and shares successful requests", async (t) => {
+  const { root } = await fixture(t);
+  let calls = 0;
+  const { url } = await running(t, {
+    projectRoot: root,
+    forceDemo: true,
+    env: {},
+    runtimeClient: {
+      async listeningReview(_owner, source) {
+        calls++;
+        assert.equal(source.question.expected, "20");
+        assert.match(source.lines[1].text, /twenty pounds/);
+        assert.equal(source.lines[1].index, 1);
+        return { evidence: [], unmentioned: [] };
+      },
+    },
+  });
+  const review = (row) =>
+    fetch(`${url}/api/items/demo-listening/listening-review/${row}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expected: "999", lines: ["untrusted"] }),
+    });
+  const responses = await Promise.all([review("0%3A1"), review("0%3A1")]);
+  for (const response of responses) {
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { evidence: [], unmentioned: [] });
+  }
+  assert.equal((await review("0%3A99")).status, 404);
+  assert.equal(calls, 1);
 });

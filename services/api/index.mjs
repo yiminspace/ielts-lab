@@ -2,11 +2,12 @@ import http from "node:http";
 import { promises as fs, constants } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { inside, loadLibrary } from "./library.mjs";
 import { createAuth } from "./auth.mjs";
 import { createRecordings, createLocalRecordingStore } from "./recordings.mjs";
-import { createDaily } from "./daily.mjs";
+import { createDaily, createRuntimeClient } from "./daily.mjs";
+import { listeningReviewSource } from "./listening-review.mjs";
 
 const moduleRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -333,15 +334,17 @@ export async function createApp({
     mode: library.mode,
     library,
   });
+  const runtime = runtimeClient || createRuntimeClient(env);
   const daily = createDaily({
     library,
     store,
     root: env.DAILY_ROOT || path.join(projectRoot, ".local", "daily"),
     env,
     ownerId: auth.ownerUserId,
-    runtimeClient,
+    runtimeClient: runtime,
     pollInterval: dailyPollInterval,
   });
+  const listeningReviews = new Map();
   let writeQueue = Promise.resolve();
   async function readProgressDisk() {
     try {
@@ -640,6 +643,36 @@ export async function createApp({
           200,
           await recordings.remove(user.id, recordingId[1]),
         );
+      const reviewRoute =
+        /^\/api\/items\/([a-z0-9-]{1,100})\/listening-review\/(\d{1,6}:\d{1,6})$/.exec(
+          route,
+        );
+      if (reviewRoute && req.method === "POST") {
+        const [, itemId, rowId] = reviewRoute;
+        const source = listeningReviewSource(
+          await library.getItem(itemId),
+          rowId,
+        );
+        if (!source)
+          return sendJSON(res, 404, { error: "这道题没有可解析的逐句原文" });
+        if (!runtime.listeningReview)
+          return sendJSON(res, 503, { error: "AI 听力解析暂不可用" });
+        const key = createHash("sha256")
+          .update(JSON.stringify([user.id, itemId, rowId, source]))
+          .digest("hex");
+        let review = listeningReviews.get(key);
+        if (!review) {
+          if (listeningReviews.size >= 64)
+            listeningReviews.delete(listeningReviews.keys().next().value);
+          review = runtime.listeningReview(user.id, source).catch((error) => {
+            if (listeningReviews.get(key) === review)
+              listeningReviews.delete(key);
+            throw error;
+          });
+          listeningReviews.set(key, review);
+        }
+        return sendJSON(res, 200, await review);
+      }
       if (!read) return sendJSON(res, 405, { error: "此操作不被支持" });
       if (route === "/api/library")
         return sendJSON(res, 200, library.publicLibrary, req.method === "HEAD");

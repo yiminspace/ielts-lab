@@ -1147,3 +1147,49 @@
     min-width: 44px;
   }
 }
+
+.exam-evidence-status {
+  display: grid;
+  gap: 4px;
+  padding: 8px 24px;
+  border-bottom: 1px solid var(--ct-line);
+  font-size: 0.85em;
+}
+.exam-evidence-status > :not(strong) {
+  color: var(--ct-muted);
+}
+.exam-evidence-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+.exam-evidence-quote,
+.exam-evidence-note {
+  --evidence-color: light-dark(#17633f, #a0e3ba);
+}
+.exam-evidence-quote.distractor,
+.exam-evidence-note.distractor {
+  --evidence-color: light-dark(#8a471c, #ffbf88);
+}
+.exam-evidence-quote {
+  text-decoration: underline 2px var(--evidence-color);
+  text-underline-offset: 0.18em;
+  background: color-mix(in srgb, var(--evidence-color) 10%, transparent);
+}
+.exam-evidence-note {
+  display: grid;
+  gap: 2px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-inline-start: 2px solid var(--evidence-color);
+  background: color-mix(in srgb, var(--evidence-color) 8%, var(--ct-bg));
+  font-size: 0.82em;
+  overflow-wrap: anywhere;
+}
+.exam-evidence-note > strong {
+  color: var(--evidence-color);
+}
+.exam-evidence-note.focused {
+  outline: 1px solid var(--evidence-color);
+}
