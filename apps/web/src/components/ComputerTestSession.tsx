@@ -1,3 +1,4 @@
+import MatchingSelect from "./MatchingSelect";
 import { ieltsExamAttrs } from "../lib/exam-theme";
 import { DailyAttemptBanner } from "./DailyWorkspace";
 import {
@@ -1293,20 +1294,14 @@ function SessionView({ item: initialItem, onExit, paperMode }: SessionProps) {
           if (dropped !== null) answer(row, dropped);
         }}
       >
-        <select
+        <MatchingSelect
+          row={row}
           disabled={submitting}
-          aria-label={`Question ${row.number} answer`}
+          label={`Question ${row.number} answer`}
           value={String(session.answers[row.id] || "")}
-          onChange={(event) => answer(row, event.target.value)}
+          onChange={(value) => answer(row, value)}
           onFocus={() => focusRow(row)}
-        >
-          <option value="">{placeholder}</option>
-          {row.options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label} — {textOf(option.content)}
-            </option>
-          ))}
-        </select>
+        />
       </span>
     ) : (
       <span data-ct-control className="ct-fill-target">

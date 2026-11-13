@@ -1,3 +1,4 @@
+import MatchingSelect from "./MatchingSelect";
 import {
   createElement,
   Fragment,
@@ -294,20 +295,14 @@ function InlineControl({
         {row.slots > 1 ? String.fromCharCode(97 + slot) : ""}
       </span>
       {row.type === "4" ? (
-        <select
-          aria-label={`第 ${row.number} 题答案`}
+        <MatchingSelect
+          row={row}
+          label={`第 ${row.number} 题答案`}
           disabled={disabled}
           value={String(answer || "")}
           onFocus={focused}
-          onChange={(e) => setAnswer(e.target.value)}
-        >
-          <option value="">选择</option>
-          {row.options.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
+          onChange={setAnswer}
+        />
       ) : (
         <input
           aria-label={`第 ${row.number} 题${row.slots > 1 ? `第 ${slot + 1} 空` : ""}答案`}

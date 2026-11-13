@@ -56,6 +56,7 @@ function renderTree(nodes, feedback = (index) => index, expandedReviews = []) {
       // observer is covered by its real-browser/API suite and stays inert here.
       if (name === "./DailyWorkspace")
         return { DailyAttemptBanner: () => null };
+      if (name === "./MatchingSelect") return { default: () => null };
       if (name === "../lib/progress" || name === "./PracticeFrame") return {};
       if (name.startsWith("../lib/") || name.endsWith(".css")) return {};
       return require(name);
