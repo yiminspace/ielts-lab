@@ -2,10 +2,11 @@ import { test, expect } from "@playwright/test";
 import { startBrowserFixture, seedIdentity } from "./fixture.mjs";
 
 let fixture: Awaited<ReturnType<typeof startBrowserFixture>>;
-test.beforeAll(async () => {
+test.beforeEach(async () => {
   fixture = await startBrowserFixture();
 });
-test.afterAll(async () => {
+test.afterEach(async ({ page }) => {
+  await page.close();
   await fixture?.stop();
 });
 
@@ -71,3 +72,96 @@ test("copying a transcript selection includes only the selected original text", 
     .poll(() => page.evaluate(() => navigator.clipboard.readText()))
     .toBe(texts.join("\n"));
 });
+
+for (const width of [1440, 390]) {
+  test(`review playback keeps timestamps local and question playback continuous at ${width}px`, async ({
+    page,
+    context,
+  }) => {
+    if (fixture.hosted) await seedIdentity(context);
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/#/item/demo-listening");
+    await page.getByRole("button", { name: "交卷检查", exact: true }).click();
+    await page.getByRole("button", { name: "确认交卷", exact: true }).click();
+    await page.reload();
+    const player = page.locator('audio[aria-label="听力录音"]');
+    await expect(player).toHaveJSProperty("paused", true);
+    const timestamps = page.locator(".exam-line-play");
+    await timestamps.nth(0).click();
+    await expect(player).toHaveJSProperty("paused", false);
+    await player.evaluate((node: HTMLAudioElement) => {
+      node.currentTime = 5;
+    });
+    await expect(player).toHaveJSProperty("paused", true);
+    expect(
+      await player.evaluate((node: HTMLAudioElement) => node.currentTime),
+    ).toBeCloseTo(5.143, 2);
+
+    // An explicit loop remains available; the question entry must clear it.
+    const loop = page.getByRole("checkbox", { name: "单句循环" });
+    await loop.check();
+    await timestamps.nth(0).click();
+    await player.evaluate((node: HTMLAudioElement) => {
+      node.currentTime = 5.1;
+    });
+    await expect
+      .poll(() => player.evaluate((node: HTMLAudioElement) => node.currentTime))
+      .toBeLessThan(1);
+    await page
+      .getByRole("button", { name: "播放第 1 题录音", exact: true })
+      .click();
+    await expect(loop).not.toBeChecked();
+    await player.evaluate((node: HTMLAudioElement) => {
+      node.currentTime = 5;
+    });
+    await expect
+      .poll(() => player.evaluate((node: HTMLAudioElement) => node.currentTime))
+      .toBeGreaterThan(5.4);
+    await expect(player).toHaveJSProperty("paused", false);
+    await page
+      .getByRole("button", { name: "暂停第 1 题录音", exact: true })
+      .click();
+    await expect(player).toHaveJSProperty("paused", true);
+
+    // Switching back from continuous playback restores the sentence boundary.
+    await page
+      .getByRole("button", { name: "播放第 1 题录音", exact: true })
+      .click();
+    await timestamps.nth(1).click();
+    await player.evaluate((node: HTMLAudioElement) => {
+      node.currentTime = 9.1;
+    });
+    await expect(player).toHaveJSProperty("paused", true);
+    expect(
+      await player.evaluate((node: HTMLAudioElement) => node.currentTime),
+    ).toBeCloseTo(9.26, 2);
+    await expect(
+      page.getByRole("button", { name: "播放第 1 题录音", exact: true }),
+    ).toBeVisible();
+
+    // The native play button takes over after a sentence stops.
+    const bounds = await player.boundingBox();
+    await player.click({ position: { x: 18, y: bounds!.height / 2 } });
+    await expect(player).toHaveJSProperty("paused", false);
+    await expect
+      .poll(() => player.evaluate((node: HTMLAudioElement) => node.currentTime))
+      .toBeGreaterThan(9.6);
+    await player.evaluate((node: HTMLAudioElement) => {
+      node.pause();
+    });
+
+    // Keyboard input on the main player must also release a sentence boundary,
+    // allowing a subsequent seek beyond it instead of snapping back.
+    await timestamps.nth(0).click();
+    await player.evaluate((node: HTMLAudioElement) => {
+      node.currentTime = 5;
+    });
+    await expect(player).toHaveJSProperty("paused", true);
+    await player.press("ArrowRight");
+    await player.evaluate((node: HTMLAudioElement) => {
+      node.currentTime = 12;
+      node.dispatchEvent(new Event("timeupdate"));
+    });
+    await expect(player).toHaveJSProperty("currentTime", 12);
+  });
+}

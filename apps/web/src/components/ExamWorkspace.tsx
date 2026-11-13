@@ -437,6 +437,7 @@ function ExamSession({
   const [focusQuotes, setFocusQuotes] = useState<string[]>([]);
   const [audioTime, setAudioTime] = useState(0);
   const [audioPlaying, setAudioPlaying] = useState(false);
+  const [sentencePlayback, setSentencePlayback] = useState(false);
   const [playbackQuestion, setPlaybackQuestion] = useState<string | null>(null);
   const [openSolutions, setOpenSolutions] = useState<string[]>([]);
   const [reviewRowId, setReviewRowId] = useState<string | null>(null);
@@ -686,17 +687,23 @@ function ExamSession({
     if (!line || !audio.current) return;
     if (questionId !== null) setLoop(false);
     setPlaybackQuestion(questionId);
+    setSentencePlayback(questionId === null);
     setSelectedLine(index);
     audio.current.currentTime = line.start;
     audio.current
       .play()
       .catch(() => setAudioError("播放未能启动，请点击音频控件重试。"));
   }
+  function useMainAudioControls() {
+    setSentencePlayback(false);
+    setPlaybackQuestion(null);
+    setLoop(false);
+  }
   function tickAudio() {
     const player = audio.current;
     if (!player) return;
     const line = selectedLine !== null ? lines[selectedLine] : null;
-    if (playbackQuestion !== null && line && player.currentTime >= line.end) {
+    if (sentencePlayback && !loop && line && player.currentTime >= line.end) {
       player.pause();
       player.currentTime = line.end;
       setAudioPlaying(false);
@@ -712,13 +719,20 @@ function ExamSession({
       player.currentTime = lines[selectedLine].start;
     setAudioTime(player.currentTime);
   }
-  // timeupdate can be several hundred milliseconds apart. Check question clips
+  // timeupdate can be several hundred milliseconds apart. Check sentence clips
   // more frequently so they stop at the sentence boundary, including at 2×.
   useEffect(() => {
-    if (!audioPlaying || playbackQuestion === null) return;
+    if (!audioPlaying || !sentencePlayback) return;
     const timer = window.setInterval(tickAudio, 25);
     return () => window.clearInterval(timer);
-  }, [audioPlaying, playbackQuestion, selectedLine, lines, loop]);
+  }, [
+    audioPlaying,
+    sentencePlayback,
+    playbackQuestion,
+    selectedLine,
+    lines,
+    loop,
+  ]);
   function submit() {
     if (submitted) return;
     const result = gradeGroups(groups, answers);
@@ -755,6 +769,7 @@ function ExamSession({
     setPassageTranslation(false);
     setLoop(false);
     setSelectedLine(null);
+    setSentencePlayback(false);
     setPlaybackQuestion(null);
     setOpenSolutions([]);
     setReviewRowId(null);
@@ -952,7 +967,7 @@ function ExamSession({
                 !canLocate
                   ? "这道题没有可定位的本地录音"
                   : listening
-                    ? "播放答案对应句，并定位右侧原文"
+                    ? "从答案对应句开始连续播放，并定位右侧原文"
                     : "定位阅读原文依据"
               }
               aria-label={`${playing ? "暂停" : listening ? "播放" : "定位"}${label}${listening ? "录音" : "原文依据"}`}
@@ -1436,6 +1451,13 @@ function ExamSession({
                 src={src}
                 controls
                 preload="metadata"
+                // Native controls take over from transcript/question playback.
+                // Handle user input rather than play/seek events, which are also
+                // emitted by programmatic sentence playback and boundary stops.
+                onPointerDownCapture={useMainAudioControls}
+                onMouseDownCapture={useMainAudioControls}
+                onFocusCapture={useMainAudioControls}
+                onKeyDownCapture={useMainAudioControls}
                 onTimeUpdate={tickAudio}
                 onPlay={() => {
                   setAudioPlaying(true);
@@ -1820,7 +1842,7 @@ function ExamSession({
                         title={
                           audioPlaying && currentLine === i
                             ? "暂停播放"
-                            : `从 ${clock(line.start)} 开始播放`
+                            : `播放当前句（${clock(line.start)}），句末停止`
                         }
                         onClick={() => {
                           if (audioPlaying && currentLine === i)
