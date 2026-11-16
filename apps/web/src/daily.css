@@ -1278,35 +1278,35 @@
 
 /* Desktop: the practice page fills the viewport; panes scroll on their own. */
 @media (min-width: 761px) {
-  .main-shell:has(.daily-listening-mode) .topbar,
-  .main-shell:has(.daily-listening-mode) .page-footer {
+  .main-shell:has(.daily-compact-mode) .topbar,
+  .main-shell:has(.daily-compact-mode) .page-footer {
     display: none;
   }
-  .main-shell:has(.daily-listening-mode) .page-main {
+  .main-shell:has(.daily-compact-mode) .page-main {
     height: 100dvh;
     min-height: 0;
     flex: none;
     padding: 10px 20px;
   }
-  .daily-listening-mode {
+  .daily-compact-mode {
     position: relative;
     height: 100%;
     display: flex;
     flex-direction: column;
     min-height: 0;
   }
-  .daily-listening-mode .daily-back {
+  .daily-compact-mode .daily-back {
     position: absolute;
     right: 0;
     top: 2px;
     margin: 0;
     font-size: 12px;
   }
-  .daily-listening-mode .page-heading {
+  .daily-compact-mode .page-heading {
     margin: 0;
     padding-right: 120px;
   }
-  .daily-listening-mode .page-heading h1 {
+  .daily-compact-mode .page-heading h1 {
     margin: 0;
     font-size: 16px;
     line-height: 28px;
@@ -1314,25 +1314,37 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .daily-listening-mode .page-heading p,
-  .daily-listening-mode .daily-context,
-  .daily-listening-mode .daily-boundary {
+  .daily-compact-mode .page-heading p,
+  .daily-compact-mode .daily-context,
+  .daily-compact-mode .daily-boundary {
     display: none;
   }
-  .daily-listening-mode .daily-tabs {
+  .daily-compact-mode .daily-tabs {
     margin: 0;
     gap: 18px;
   }
-  .daily-listening-mode .daily-tabs button {
+  .daily-compact-mode .daily-tabs button {
     font-size: 12px;
     padding: 6px 2px;
     min-height: 32px;
   }
-  .daily-listening-mode > [role="tabpanel"] {
+  .daily-compact-mode > [role="tabpanel"] {
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
+  }
+  .daily-compact-mode .daily-reading {
+    flex: 1;
+    min-height: 0;
+    padding-top: 8px;
+    align-items: stretch;
+    overflow: hidden;
+  }
+  .daily-compact-mode .daily-passage,
+  .daily-compact-mode .daily-questions {
+    height: 100%;
+    min-height: 0;
   }
   .daily-listening-mode .daily-listening {
     flex: 1;
@@ -1374,19 +1386,19 @@
   }
 }
 @media (min-width: 1100px) {
-  .daily-listening-mode .page-heading {
+  .daily-compact-mode .page-heading {
     position: absolute;
     top: 0;
     left: 0;
     width: 30%;
     padding: 0;
   }
-  .daily-listening-mode .daily-tabs {
+  .daily-compact-mode .daily-tabs {
     padding-left: 32%;
     padding-right: 100px;
     min-height: 36px;
   }
-  .daily-listening-mode .daily-back {
+  .daily-compact-mode .daily-back {
     top: 8px;
   }
 }
@@ -1395,46 +1407,46 @@
     height: 64px;
   }
 }
-.daily-listening-mode .page-heading > div {
+.daily-compact-mode .page-heading > div {
   min-width: 0;
   flex: 1;
 }
-.daily-listening-mode .daily-working {
+.daily-compact-mode .daily-working {
   display: none;
 }
 
 /* Phone: one column; keep the player reachable while reading. */
 @media (max-width: 760px) {
-  .daily-listening-mode {
+  .daily-compact-mode {
     position: relative;
   }
-  .daily-listening-mode .daily-back {
+  .daily-compact-mode .daily-back {
     position: absolute;
     right: 0;
     top: 0;
     margin: 0;
     font-size: 11px;
   }
-  .daily-listening-mode .page-heading {
+  .daily-compact-mode .page-heading {
     margin: 0;
     padding-right: 100px;
   }
-  .daily-listening-mode .page-heading h1 {
+  .daily-compact-mode .page-heading h1 {
     font-size: 16px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .daily-listening-mode .page-heading p,
-  .daily-listening-mode .daily-context,
-  .daily-listening-mode .daily-boundary {
+  .daily-compact-mode .page-heading p,
+  .daily-compact-mode .daily-context,
+  .daily-compact-mode .daily-boundary {
     display: none;
   }
-  .daily-listening-mode .daily-tabs {
+  .daily-compact-mode .daily-tabs {
     gap: 10px;
     margin-top: 4px;
   }
-  .daily-listening-mode .daily-tabs button {
+  .daily-compact-mode .daily-tabs button {
     white-space: nowrap;
     font-size: 12px;
     gap: 5px;
