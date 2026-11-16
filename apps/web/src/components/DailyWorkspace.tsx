@@ -332,7 +332,7 @@ export default function DailyWorkspace({ id }: { id?: string }) {
   const blocked = !!busy || !!lesson?.pending;
   return (
     <div
-      className={`daily-workspace ${lesson?.content && (tab === "reading" || tab === "listening") ? "daily-compact-mode" : ""} ${tab === "listening" && lesson?.content ? "daily-listening-mode" : ""}`}
+      className={`daily-workspace ${lesson?.content ? "daily-compact-mode" : ""} ${tab === "listening" && lesson?.content ? "daily-listening-mode" : ""}`}
     >
       {id && (
         <a className="daily-back" href="#/daily">
