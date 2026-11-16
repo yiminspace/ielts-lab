@@ -244,7 +244,7 @@ test.describe("Daily real API with an original injected runtime", () => {
     ).toBeVisible();
     await expect(
       page.getByText("口语训练目标 6.5", { exact: true }),
-    ).toBeVisible();
+    ).toBeHidden();
     expect(
       calls.filter((call) => call.workflow === "ielts.lesson"),
     ).toHaveLength(1);
@@ -1490,6 +1490,30 @@ test.describe("Daily reading allows unanswered questions", () => {
     );
     const passage = page.locator(".daily-passage");
     const questions = page.locator(".daily-questions");
+    const compactHeader = async () => {
+      const heading = page.locator(".daily-workspace .page-heading h1");
+      const tabs = page.getByRole("tablist", { name: "听后练习内容" });
+      await expect(heading).toHaveCSS("font-size", "16px");
+      await expect(page.locator(".daily-context")).toBeHidden();
+      await expect(
+        page.locator(".daily-workspace > .daily-boundary"),
+      ).toBeHidden();
+      return {
+        heading: await heading.boundingBox(),
+        tabs: await tabs.boundingBox(),
+      };
+    };
+    const readingHeader = await compactHeader();
+    await page.getByRole("tab", { name: "分段听", exact: true }).click();
+    expect(await compactHeader()).toEqual(readingHeader);
+    await page.getByRole("tab", { name: "阅读理解", exact: true }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.documentElement.scrollHeight <= innerHeight + 1,
+        ),
+      )
+      .toBe(true);
     await expect(passage).toBeVisible();
     await questions.scrollIntoViewIfNeeded();
     await page.evaluate(() =>
@@ -1522,7 +1546,22 @@ test.describe("Daily reading allows unanswered questions", () => {
       "aria-selected",
       "true",
     );
+    await page.reload();
+    await expect(page.getByRole("tab", { name: "阅读理解" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await compactHeader();
     await page.setViewportSize({ width: 390, height: 844 });
+    const mobileHeader = await compactHeader();
+    await page.getByRole("tab", { name: "分段听", exact: true }).click();
+    expect(await compactHeader()).toEqual(mobileHeader);
+    await page.getByRole("tab", { name: "阅读理解", exact: true }).click();
+    await expect(page.getByRole("tab", { name: "阅读理解" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await page.screenshot({ path: "/tmp/ielts-daily-compact-mobile.png" });
     await expect
       .poll(() =>
         passage.evaluate((element) => getComputedStyle(element).overflowY),
