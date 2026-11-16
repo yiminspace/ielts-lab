@@ -1504,8 +1504,17 @@ test.describe("Daily reading allows unanswered questions", () => {
       };
     };
     const readingHeader = await compactHeader();
-    await page.getByRole("tab", { name: "分段听", exact: true }).click();
-    expect(await compactHeader()).toEqual(readingHeader);
+    for (const name of ["分段听", "主题交流", "写作练习"]) {
+      await page.getByRole("tab", { name, exact: true }).click();
+      expect(await compactHeader()).toEqual(readingHeader);
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () => document.documentElement.scrollHeight <= innerHeight + 1,
+          ),
+        )
+        .toBe(true);
+    }
     await page.getByRole("tab", { name: "阅读理解", exact: true }).click();
     await expect
       .poll(() =>
@@ -1554,8 +1563,15 @@ test.describe("Daily reading allows unanswered questions", () => {
     await compactHeader();
     await page.setViewportSize({ width: 390, height: 844 });
     const mobileHeader = await compactHeader();
-    await page.getByRole("tab", { name: "分段听", exact: true }).click();
-    expect(await compactHeader()).toEqual(mobileHeader);
+    for (const name of ["分段听", "主题交流", "写作练习"]) {
+      await page.getByRole("tab", { name, exact: true }).click();
+      expect(await compactHeader()).toEqual(mobileHeader);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+    }
     await page.getByRole("tab", { name: "阅读理解", exact: true }).click();
     await expect(page.getByRole("tab", { name: "阅读理解" })).toHaveAttribute(
       "aria-selected",
