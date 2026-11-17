@@ -700,7 +700,8 @@
 .computer-test .exam-transcript-line.focused {
   box-shadow: inset 3px 0 var(--ct-fg);
 }
-.computer-test .exam-transcript-line.located {
+.computer-test .exam-transcript-line.located,
+.computer-test .exam-transcript-line.previewed {
   outline: 2px solid var(--ct-focus);
   outline-offset: -2px;
   background: var(--ct-panel);

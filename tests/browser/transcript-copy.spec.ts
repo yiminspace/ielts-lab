@@ -73,6 +73,89 @@ test("copying a transcript selection includes only the selected original text", 
     .toBe(texts.join("\n"));
 });
 
+test("timeline hover and keyboard focus locate sentences without changing playback or selection", async ({
+  page,
+  context,
+}) => {
+  if (fixture.hosted) await seedIdentity(context);
+  await page.setViewportSize({ width: 1440, height: 800 });
+  await page.route("**/api/items/demo-listening", async (route) => {
+    const response = await route.fetch();
+    const item = await response.json();
+    item.data.listenDetail = Array.from(
+      { length: 12 },
+      (_, i) =>
+        `[00:${String(i).padStart(2, "0")}]Original sentence ${i + 1}. This is a longer original example for checking transcript scrolling within its own panel.`,
+    ).join("\n");
+    await route.fulfill({ json: item });
+  });
+  await page.goto("/#/item/demo-listening");
+  await page.getByRole("button", { name: "交卷检查", exact: true }).click();
+  await page.getByRole("button", { name: "确认交卷", exact: true }).click();
+  await page.reload();
+  const dots = page.locator(".exam-segment-dot");
+  const panel = page.getByRole("region", { name: "Listening transcript" });
+  const player = page.locator('audio[aria-label="听力录音"]');
+  await expect(dots).toHaveCount(12);
+  const initialTime = await player.evaluate(
+    (node: HTMLAudioElement) => node.currentTime,
+  );
+  const questionScroll = await page
+    .locator(".exam-questions-panel")
+    .evaluate((node) => node.scrollTop);
+  await dots.last().hover();
+  await expect(panel.locator(".previewed")).toHaveAttribute("id", "line-11");
+  await expect
+    .poll(() => panel.evaluate((node) => node.scrollTop))
+    .toBeGreaterThan(0);
+  const target = await panel.locator("#line-11").boundingBox();
+  const viewport = await panel.boundingBox();
+  expect(target!.y).toBeGreaterThanOrEqual(viewport!.y);
+  expect(target!.y + target!.height).toBeLessThanOrEqual(
+    viewport!.y + viewport!.height + 1,
+  );
+  await dots.first().hover();
+  await expect(panel.locator(".previewed")).toHaveAttribute("id", "line-0");
+  await expect.poll(() => panel.evaluate((node) => node.scrollTop)).toBe(0);
+  await page.mouse.move(0, 0);
+  await expect(panel.locator(".previewed")).toHaveCount(0);
+  await expect(player).toHaveJSProperty("paused", true);
+  await expect(player).toHaveJSProperty("currentTime", initialTime);
+  await expect(page.locator(".exam-segment-options input:checked")).toHaveCount(
+    0,
+  );
+  expect(
+    await page
+      .locator(".exam-questions-panel")
+      .evaluate((node) => node.scrollTop),
+  ).toBe(questionScroll);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+
+  await page.getByRole("button", { name: "收起原文", exact: true }).click();
+  await expect(panel).toHaveCount(0);
+  await dots.last().hover();
+  await expect(panel.locator("#line-11")).toHaveClass(/previewed/);
+  await page.mouse.move(0, 0);
+  await dots.nth(8).focus();
+  await expect(panel.locator("#line-8")).toHaveClass(/previewed/);
+  await page.keyboard.press("Tab");
+  await expect(panel.locator("#line-9")).toHaveClass(/previewed/);
+  await page.keyboard.press("Space");
+  await expect(dots.nth(9)).toHaveAttribute("aria-pressed", "true");
+  await expect(player).toHaveJSProperty("paused", true);
+  // Keyboard navigation takes over even when the pointer stays on a clicked dot.
+  await dots.first().click();
+  await page.keyboard.press("Tab");
+  await expect(dots.nth(1)).toBeFocused();
+  await expect(panel.locator(".previewed")).toHaveAttribute("id", "line-1");
+  await page.keyboard.press("Tab");
+  await expect(panel.locator(".previewed")).toHaveAttribute("id", "line-2");
+  await page.mouse.move(0, 0);
+  await expect(panel.locator(".previewed")).toHaveAttribute("id", "line-2");
+  await page.getByRole("button", { name: "收起原文", exact: true }).focus();
+  await expect(panel.locator(".previewed")).toHaveCount(0);
+});
+
 for (const width of [1440, 390]) {
   test(`review playback stops timestamps and question clips at sentence end at ${width}px`, async ({
     page,

@@ -451,6 +451,9 @@ function ExamSession({
   const [selectedLine, setSelectedLine] = useState<number | null>(null);
   const [audioError, setAudioError] = useState("");
   const [selectedSegments, setSelectedSegments] = useState<number[]>([]);
+  const [hoveredSegment, setHoveredSegment] = useState<number | null>(null);
+  const [focusedSegment, setFocusedSegment] = useState<number | null>(null);
+  const previewSegment = hoveredSegment ?? focusedSegment;
   const segmentQueue = useRef<number[]>([]);
   const [queueActive, setQueueActive] = useState(false);
   const audio = useRef<HTMLAudioElement>(null);
@@ -601,6 +604,15 @@ function ExamSession({
       ),
     );
   }, [transcriptOpen, transcriptTarget]);
+  useLayoutEffect(() => {
+    if (!transcriptOpen || previewSegment === null) return;
+    scrollQuestionWithinPane(
+      transcriptPanel.current,
+      transcriptPanel.current?.querySelector<HTMLElement>(
+        `[id="line-${previewSegment}"]`,
+      ),
+    );
+  }, [transcriptOpen, previewSegment]);
   useEffect(() => {
     if (focusQuotes.length)
       scrollQuestionWithinPane(
@@ -1595,7 +1607,21 @@ function ExamSession({
                       }}
                       aria-label={`选择第 ${i + 1} 段（${clock(line.start)}）`}
                       aria-pressed={selectedSegments.includes(i)}
+                      aria-controls={`line-${i}`}
                       title={`第 ${i + 1} 段 · ${clock(line.start)} · ${line.text}`}
+                      onPointerEnter={(event) => {
+                        if (event.pointerType === "touch") return;
+                        setHoveredSegment(i);
+                        setTranscriptOpen(true);
+                      }}
+                      onPointerLeave={() => setHoveredSegment(null)}
+                      onPointerCancel={() => setHoveredSegment(null)}
+                      onFocus={() => {
+                        setHoveredSegment(null);
+                        setFocusedSegment(i);
+                        setTranscriptOpen(true);
+                      }}
+                      onBlur={() => setFocusedSegment(null)}
                       onClick={() => toggleSegment(i)}
                     />
                   ))}
@@ -1968,7 +1994,7 @@ function ExamSession({
                     <div
                       id={`line-${i}`}
                       key={i}
-                      className={`exam-transcript-line ${currentLine === i ? "playing" : ""} ${selectedLine === i ? "focused" : ""} ${transcriptTarget?.index === i ? "located" : ""}`}
+                      className={`exam-transcript-line ${currentLine === i ? "playing" : ""} ${selectedLine === i ? "focused" : ""} ${transcriptTarget?.index === i ? "located" : ""} ${previewSegment === i ? "previewed" : ""}`}
                     >
                       <button
                         type="button"
