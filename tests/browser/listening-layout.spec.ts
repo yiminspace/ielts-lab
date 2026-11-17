@@ -222,6 +222,13 @@ test("listening review underlines evidence across lines, jumps to notes and retr
               explanation: "这里排除了电话报名。",
             },
             {
+              line: 2,
+              quotes: ["library"],
+              answer: "A",
+              kind: "correct",
+              explanation: "同一句的另一条依据不应重复选段。",
+            },
+            {
               line: 1,
               quotes: ["invented quotation"],
               answer: "D",
@@ -248,16 +255,126 @@ test("listening review underlines evidence across lines, jumps to notes and retr
     "garden",
     "no need to telephone",
   ]);
-  await expect(panel.locator(".exam-evidence-note")).toHaveCount(3);
+  await expect(panel.locator(".exam-evidence-note")).toHaveCount(4);
+  const selected = page.locator(".exam-segment-options input:checked");
+  const dots = page.locator('.exam-segment-dot[aria-pressed="true"]');
+  await expect(selected).toHaveCount(3);
+  await expect(dots).toHaveCount(3);
+  for (const index of [0, 2, 3]) {
+    await expect(
+      page.locator(".exam-segment-options input").nth(index),
+    ).toBeChecked();
+  }
+  await expect(
+    page.locator(".exam-segment-options input").nth(1),
+  ).not.toBeChecked();
   await page.getByRole("button", { name: /B · 依据/ }).click();
   await expect(panel.locator(".exam-evidence-note.focused")).toContainText(
     "这里说明活动地点。",
   );
+  await page.locator(".exam-segment-options input").nth(2).uncheck();
+  await expect(selected).toHaveCount(2);
   await page.getByRole("button", { name: "收起第 11–12 题解析" }).click();
+  await expect(selected).toHaveCount(2);
   await expect(panel.locator("u")).toHaveCount(0);
   await expect(panel.locator(".exam-evidence-note")).toHaveCount(0);
+  await page.getByRole("button", { name: "查看第 11–12 题解析" }).click();
+  await expect(selected).toHaveCount(3);
   await page.getByRole("button", { name: "查看第 15 题解析" }).click();
   await expect(page.getByText("Original explanation.").first()).toBeVisible();
   await expect(panel.getByText(/第 15 题 · AI 解析/)).toHaveCount(0);
-  expect(calls).toBe(2);
+  expect(calls).toBe(3);
 });
+
+for (const width of [1440, 390]) {
+  test(`opening another explanation replaces the segment selection without autoplay at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    // Use the original demo's four questions with one source locator per question.
+    await page.unroute("**/api/items/demo-listening");
+    let release: () => void = () => {};
+    const ready = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route(
+      "**/api/items/demo-listening/listening-review/*",
+      async (route) => {
+        const second = decodeURIComponent(route.request().url()).endsWith(
+          "0:1",
+        );
+        if (second) await ready;
+        await route.fulfill({
+          json: {
+            evidence: second
+              ? [
+                  {
+                    line: 3,
+                    quotes: ["email"],
+                    answer: "twenty",
+                    kind: "distractor",
+                    explanation: "原创干扰项。",
+                  },
+                ]
+              : [
+                  {
+                    line: 3,
+                    quotes: ["email"],
+                    answer: "Monday",
+                    kind: "distractor",
+                    explanation: "原创干扰项。",
+                  },
+                  {
+                    line: 0,
+                    quotes: ["Monday"],
+                    answer: "Monday",
+                    kind: "correct",
+                    explanation: "原创正确依据。",
+                  },
+                  {
+                    line: 2,
+                    quotes: ["library"],
+                    answer: "Monday",
+                    kind: "correct",
+                    explanation: "另一条原创依据。",
+                  },
+                ],
+            unmentioned: [],
+          },
+        });
+      },
+    );
+    await page.goto("/#/item/demo-listening");
+    await page.getByRole("button", { name: "交卷检查", exact: true }).click();
+    await page.getByRole("button", { name: "确认交卷", exact: true }).click();
+    const inputs = page.locator(".exam-segment-options input");
+    const checked = page.locator(".exam-segment-options input:checked");
+    const player = page.locator('audio[aria-label="听力录音"]');
+    await page
+      .getByRole("button", { name: "查看第 1 题解析", exact: true })
+      .click();
+    await expect(checked).toHaveCount(3);
+    await expect(inputs.nth(1)).not.toBeChecked();
+    await expect(player).toHaveJSProperty("paused", true);
+    await page.getByRole("button", { name: "播放所选", exact: true }).click();
+    await expect(player).toHaveJSProperty("paused", false);
+    await page
+      .getByRole("button", { name: "查看第 2 题解析", exact: true })
+      .click();
+    // While AI is pending, use only the new question's source locator.
+    await expect(checked).toHaveCount(1);
+    await expect(inputs.nth(1)).toBeChecked();
+    await expect(player).toHaveJSProperty("paused", true);
+    release();
+    await expect(inputs.nth(3)).toBeChecked();
+    await expect(checked).toHaveCount(1);
+    await expect(inputs.nth(1)).not.toBeChecked();
+    await expect(player).toHaveJSProperty("paused", true);
+    await expect(
+      page.getByRole("button", { name: "播放所选", exact: true }),
+    ).toBeEnabled();
+    await page.reload();
+    await expect(checked).toHaveCount(0);
+    await expect(player).toHaveJSProperty("paused", true);
+  });
+}
