@@ -274,7 +274,7 @@ for (const width of [1440, 390]) {
 }
 
 for (const width of [1440, 390]) {
-  test(`review selected segments play in source order and skip gaps at ${width}px`, async ({
+  test(`review selected segments play continuously and skip gaps at ${width}px`, async ({
     page,
     context,
   }) => {
@@ -339,6 +339,27 @@ for (const width of [1440, 390]) {
     await expect(player).toHaveJSProperty("currentTime", 12);
     await review.getByRole("button", { name: "清空选择", exact: true }).click();
     await expect(choices.nth(0)).not.toBeChecked();
+    await choices.nth(0).check();
+    await choices.nth(1).check();
+    await review.getByRole("button", { name: "播放所选", exact: true }).click();
+    const timeAfterBoundary = await player.evaluate(
+      (node: HTMLAudioElement) => {
+        // Simulate detecting the boundary after audio from the next line played.
+        node.currentTime = 5.15;
+        const timeBeforeTick = node.currentTime;
+        node.dispatchEvent(new Event("timeupdate"));
+        return node.currentTime - timeBeforeTick;
+      },
+    );
+    expect(timeAfterBoundary).toBe(0);
+    await expect(dots.nth(1)).toHaveClass(/\bcurrent\b/);
+    await player.evaluate((node: HTMLAudioElement) => {
+      node.currentTime = 9.5;
+      node.dispatchEvent(new Event("timeupdate"));
+    });
+    await expect(player).toHaveJSProperty("paused", true);
+    await expect(player).toHaveJSProperty("currentTime", 9.26);
+    await review.getByRole("button", { name: "清空选择", exact: true }).click();
     // The recording's natural end also completes a queue containing the last line.
     await choices.nth(3).check();
     await review.getByRole("button", { name: "播放所选", exact: true }).click();

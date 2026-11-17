@@ -773,7 +773,10 @@ function ExamSession({
         queue.shift();
         if (queue.length) {
           setSelectedLine(queue[0]);
-          player.currentTime = lines[queue[0]].start;
+          const nextStart = lines[queue[0]].start;
+          // At a shared boundary, seeking back would replay any audio
+          // that already played before this tick detected the transition.
+          if (nextStart !== queuedLine.end) player.currentTime = nextStart;
           if (player.paused)
             void player.play().catch(() => {
               clearSegmentQueue();
