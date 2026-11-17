@@ -501,10 +501,13 @@ function ExamSession({
         if (request.signal.aborted) return;
         setListeningReview({
           ...review,
-          evidence: review.evidence.filter(({ line, quotes }) =>
-            quotes.every(
-              (quote) => !!quote && reviewLines[line]?.text.includes(quote),
-            ),
+          evidence: review.evidence.filter(
+            ({ line, quotes }) =>
+              !!reviewLines[line] &&
+              quotes.length > 0 &&
+              quotes.every(
+                (quote) => !!quote && reviewLines[line]?.text.includes(quote),
+              ),
           ),
         });
       } catch {
@@ -516,6 +519,7 @@ function ExamSession({
   useEffect(() => {
     const evidence = listeningReview?.evidence;
     if (!reviewRow || !evidence?.length) return;
+    selectReviewSegments(evidence.map((entry) => entry.line));
     const first = evidence.reduce((best, entry) =>
       entry.kind === "correct" &&
       (best.kind !== "correct" || entry.line < best.line)
@@ -723,6 +727,11 @@ function ExamSession({
         ? old.filter((i) => i !== index)
         : [...old, index].sort((a, b) => a - b),
     );
+  }
+  function selectReviewSegments(indices: number[]) {
+    if (segmentQueue.current.length) audio.current?.pause();
+    clearSegmentQueue();
+    setSelectedSegments([...new Set(indices)].sort((a, b) => a - b));
   }
   function playSegments() {
     const player = audio.current;
@@ -1022,7 +1031,10 @@ function ExamSession({
                     ? { index, number: row.number }
                     : null,
                 );
-                if (!expanded) setTranscriptOpen(true);
+                if (!expanded) {
+                  selectReviewSegments(index >= 0 ? [index] : []);
+                  setTranscriptOpen(true);
+                }
                 return;
               }
               setOpenSolutions((old) =>
