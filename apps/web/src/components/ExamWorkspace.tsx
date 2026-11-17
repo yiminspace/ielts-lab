@@ -1024,6 +1024,9 @@ function ExamSession({
                 className="exam-answer-toggle"
                 aria-label={`${answerRevealed ? "隐藏" : "显示"}${label}答案`}
                 aria-pressed={answerRevealed}
+                aria-describedby={
+                  answerRevealed ? `answer-value-${row.id}` : undefined
+                }
                 onClick={() =>
                   setRevealedAnswers((old) =>
                     old.includes(row.id)
@@ -1033,6 +1036,7 @@ function ExamSession({
                 }
               >
                 <strong
+                  id={`answer-value-${row.id}`}
                   className={
                     answerRevealed ? undefined : "exam-answer-concealed"
                   }

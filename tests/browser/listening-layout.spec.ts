@@ -404,6 +404,7 @@ for (const width of [1440, 390]) {
       exact: true,
     });
     await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await expect(toggle).toHaveAccessibleDescription("");
     await expect(toggle.locator("strong")).toHaveCSS("filter", "blur(5px)");
     await expect(toggle.locator("strong")).toHaveAttribute(
       "aria-hidden",
@@ -418,6 +419,7 @@ for (const width of [1440, 390]) {
       exact: true,
     });
     await expect(hide).toHaveAttribute("aria-pressed", "true");
+    await expect(hide).toHaveAccessibleDescription("A, B");
     await expect(hide.locator("strong")).toHaveText("A, B");
     await expect(hide.locator("strong")).toHaveCSS("filter", "none");
     await expect(first.locator(".exam-choice-correct")).toHaveCount(2);
@@ -426,11 +428,13 @@ for (const width of [1440, 390]) {
     ).toHaveCount(0);
     await hide.press("Space");
     await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await expect(toggle).toHaveAccessibleDescription("");
     await expect(
       first.locator(".exam-choice-correct, .exam-choice-verdict"),
     ).toHaveCount(0);
     await toggle.press("Enter");
     await expect(hide).toHaveAttribute("aria-pressed", "true");
+    await expect(hide).toHaveAccessibleDescription("A, B");
     await expect(page.locator(".practice-frame")).toBeVisible();
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
@@ -446,6 +450,7 @@ for (const width of [1440, 390]) {
     });
     await page.reload();
     await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await expect(toggle).toHaveAccessibleDescription("");
     await expect(
       first.locator(".exam-choice-correct, .exam-choice-verdict"),
     ).toHaveCount(0);
