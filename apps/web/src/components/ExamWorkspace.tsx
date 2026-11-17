@@ -731,7 +731,16 @@ function ExamSession({
   function selectReviewSegments(indices: number[]) {
     if (segmentQueue.current.length) audio.current?.pause();
     clearSegmentQueue();
-    setSelectedSegments([...new Set(indices)].sort((a, b) => a - b));
+    const first = Math.min(...indices);
+    const last = Math.max(...indices);
+    setSelectedSegments(
+      indices.length
+        ? Array.from(
+            { length: last - first + 1 },
+            (_, offset) => first + offset,
+          )
+        : [],
+    );
   }
   function playSegments() {
     const player = audio.current;

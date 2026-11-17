@@ -258,28 +258,28 @@ test("listening review underlines evidence across lines, jumps to notes and retr
   await expect(panel.locator(".exam-evidence-note")).toHaveCount(4);
   const selected = page.locator(".exam-segment-options input:checked");
   const dots = page.locator('.exam-segment-dot[aria-pressed="true"]');
-  await expect(selected).toHaveCount(3);
-  await expect(dots).toHaveCount(3);
-  for (const index of [0, 2, 3]) {
+  await expect(selected).toHaveCount(4);
+  await expect(dots).toHaveCount(4);
+  for (const index of [0, 1, 2, 3]) {
     await expect(
       page.locator(".exam-segment-options input").nth(index),
     ).toBeChecked();
   }
   await expect(
     page.locator(".exam-segment-options input").nth(1),
-  ).not.toBeChecked();
+  ).toBeChecked();
   await page.getByRole("button", { name: /B · 依据/ }).click();
   await expect(panel.locator(".exam-evidence-note.focused")).toContainText(
     "这里说明活动地点。",
   );
   await page.locator(".exam-segment-options input").nth(2).uncheck();
-  await expect(selected).toHaveCount(2);
+  await expect(selected).toHaveCount(3);
   await page.getByRole("button", { name: "收起第 11–12 题解析" }).click();
-  await expect(selected).toHaveCount(2);
+  await expect(selected).toHaveCount(3);
   await expect(panel.locator("u")).toHaveCount(0);
   await expect(panel.locator(".exam-evidence-note")).toHaveCount(0);
   await page.getByRole("button", { name: "查看第 11–12 题解析" }).click();
-  await expect(selected).toHaveCount(3);
+  await expect(selected).toHaveCount(4);
   await page.getByRole("button", { name: "查看第 15 题解析" }).click();
   await expect(page.getByText("Original explanation.").first()).toBeVisible();
   await expect(panel.getByText(/第 15 题 · AI 解析/)).toHaveCount(0);
@@ -353,8 +353,9 @@ for (const width of [1440, 390]) {
     await page
       .getByRole("button", { name: "查看第 1 题解析", exact: true })
       .click();
-    await expect(checked).toHaveCount(3);
-    await expect(inputs.nth(1)).not.toBeChecked();
+    // The unrelated sentence between the first and last evidence is included.
+    await expect(checked).toHaveCount(4);
+    await expect(inputs.nth(1)).toBeChecked();
     await expect(player).toHaveJSProperty("paused", true);
     await page.getByRole("button", { name: "播放所选", exact: true }).click();
     await expect(player).toHaveJSProperty("paused", false);
