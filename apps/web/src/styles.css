@@ -767,6 +767,7 @@ th {
   margin-bottom: 25px;
 }
 .collection-filter button {
+  border-radius: 6px;
   min-width: 46px;
   padding: 6px 13px;
   border-color: transparent;
@@ -793,7 +794,7 @@ th {
 }
 .material-list {
   border: 1px solid var(--line);
-  border-radius: 2px;
+  border-radius: 10px;
   overflow: hidden;
   background: var(--vg-color-surface);
 }
@@ -802,13 +803,14 @@ th {
   gap: 16px;
   align-items: center;
   min-height: 76px;
-  padding: 14px 18px;
+  padding: 18px 20px;
   border-bottom: 1px solid var(--line);
 }
 .material-row:last-child {
   border: none;
 }
-.material-row:hover {
+.material-row:hover,
+.material-row:focus-within {
   background: var(--panel);
 }
 .material-icon {
@@ -818,7 +820,7 @@ th {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 2px;
+  border-radius: 10px;
 }
 .material-icon.reading {
   color: var(--muted);
@@ -843,7 +845,7 @@ th {
 }
 .material-main strong {
   font-size: 16px;
-  font-weight: 550;
+  font-weight: 600;
   display: block;
   overflow-wrap: anywhere;
 }
@@ -857,13 +859,14 @@ th {
   color: var(--muted);
 }
 .completed-label {
-  color: var(--muted);
+  color: var(--green);
   display: inline-flex;
   align-items: center;
   gap: 4px;
 }
 .material-main > .practice-result {
-  color: var(--action);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 .bookmark-toggle {
   color: var(--muted);
@@ -1461,6 +1464,78 @@ th {
 }
 .material-labels > span:first-child {
   color: var(--action-hover);
+}
+.material-main > .material-labels {
+  margin-top: 9px;
+  gap: 8px 12px;
+}
+
+/* Raw archive values are identifiers, not verified Chinese difficulty levels. */
+.material-difficulty {
+  --difficulty-ink: #596272;
+  --difficulty-fill: #f1f3f6;
+  --difficulty-line: #dce1e8;
+}
+.material-difficulty[data-difficulty="0"] {
+  --difficulty-ink: #17634e;
+  --difficulty-fill: #eaf7f0;
+  --difficulty-line: #b9decb;
+}
+.material-difficulty[data-difficulty="1"] {
+  --difficulty-ink: #245eaa;
+  --difficulty-fill: #edf4ff;
+  --difficulty-line: #c5d8f5;
+}
+.material-difficulty[data-difficulty="2"] {
+  --difficulty-ink: #87520c;
+  --difficulty-fill: #fff5df;
+  --difficulty-line: #efd59c;
+}
+.material-difficulty[data-difficulty="3"] {
+  --difficulty-ink: #7543a1;
+  --difficulty-fill: #f5edfc;
+  --difficulty-line: #dfcaef;
+}
+.material-difficulty,
+.practice-frame .pf-identity .material-difficulty {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 2px 9px;
+  border: 1px solid var(--difficulty-line);
+  border-radius: 6px;
+  background: var(--difficulty-fill);
+  color: var(--difficulty-ink);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.material-difficulty::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: currentColor;
+}
+.material-difficulty[data-difficulty="unknown"]::before {
+  background: transparent;
+  border: 1px solid currentColor;
+}
+.practice-frame.ct-contrast-white-black .material-difficulty,
+.practice-frame.ct-contrast-yellow-black .material-difficulty {
+  color: var(--ct-fg);
+  background: var(--ct-bg);
+  border-color: currentColor;
+}
+@media (forced-colors: active) {
+  .material-difficulty {
+    border-color: currentColor;
+  }
 }
 @media (max-width: 700px) {
   .track-picker > span {
