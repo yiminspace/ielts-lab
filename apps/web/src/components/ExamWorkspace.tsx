@@ -1617,6 +1617,7 @@ function ExamSession({
                       onPointerLeave={() => setHoveredSegment(null)}
                       onPointerCancel={() => setHoveredSegment(null)}
                       onFocus={() => {
+                        setHoveredSegment(null);
                         setFocusedSegment(i);
                         setTranscriptOpen(true);
                       }}

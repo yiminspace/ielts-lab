@@ -143,6 +143,15 @@ test("timeline hover and keyboard focus locate sentences without changing playba
   await page.keyboard.press("Space");
   await expect(dots.nth(9)).toHaveAttribute("aria-pressed", "true");
   await expect(player).toHaveJSProperty("paused", true);
+  // Keyboard navigation takes over even when the pointer stays on a clicked dot.
+  await dots.first().click();
+  await page.keyboard.press("Tab");
+  await expect(dots.nth(1)).toBeFocused();
+  await expect(panel.locator(".previewed")).toHaveAttribute("id", "line-1");
+  await page.keyboard.press("Tab");
+  await expect(panel.locator(".previewed")).toHaveAttribute("id", "line-2");
+  await page.mouse.move(0, 0);
+  await expect(panel.locator(".previewed")).toHaveAttribute("id", "line-2");
   await page.getByRole("button", { name: "收起原文", exact: true }).focus();
   await expect(panel.locator(".previewed")).toHaveCount(0);
 });
