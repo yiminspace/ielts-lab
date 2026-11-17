@@ -440,6 +440,7 @@ function ExamSession({
   const [sentencePlayback, setSentencePlayback] = useState(false);
   const [playbackQuestion, setPlaybackQuestion] = useState<string | null>(null);
   const [openSolutions, setOpenSolutions] = useState<string[]>([]);
+  const [revealedAnswers, setRevealedAnswers] = useState<string[]>([]);
   const [reviewRowId, setReviewRowId] = useState<string | null>(null);
   const [listeningReview, setListeningReview] =
     useState<ListeningReview | null>(null);
@@ -866,6 +867,7 @@ function ExamSession({
     setSentencePlayback(false);
     setPlaybackQuestion(null);
     setOpenSolutions([]);
+    setRevealedAnswers([]);
     setReviewRowId(null);
     setListeningReview(null);
     setReviewError(false);
@@ -964,6 +966,7 @@ function ExamSession({
       ? reviewRowId === row.id
       : openSolutions.includes(row.id);
     const expected = compactAnswer(row);
+    const answerRevealed = revealedAnswers.includes(row.id);
     const completed =
       part === "summary" && status !== "manual"
         ? completedBlankAnswer(row)
@@ -1016,7 +1019,29 @@ function ExamSession({
                     : "正确答案"}
                 ：
               </span>
-              <strong>{expected.primary || "未提供"}</strong>
+              <button
+                type="button"
+                className="exam-answer-toggle"
+                aria-label={`${answerRevealed ? "隐藏" : "显示"}${label}答案`}
+                aria-pressed={answerRevealed}
+                onClick={() =>
+                  setRevealedAnswers((old) =>
+                    old.includes(row.id)
+                      ? old.filter((id) => id !== row.id)
+                      : [...old, row.id],
+                  )
+                }
+              >
+                <strong
+                  className={
+                    answerRevealed ? undefined : "exam-answer-concealed"
+                  }
+                  aria-hidden={!answerRevealed}
+                >
+                  {expected.primary || "未提供"}
+                </strong>
+                <small>{answerRevealed ? "点击隐藏" : "点击查看"}</small>
+              </button>
             </span>
           </>
         )}
@@ -1177,11 +1202,12 @@ function ExamSession({
             (Array.isArray(row.expected) ? row.expected : [row.expected])
               .map(String)
               .includes(o.value);
+          const showVerdict = revealedAnswers.includes(row.id);
           const wrongOption =
             result && result.status !== "manual" && checked && !expectedOption;
           return (
             <label
-              className={`exam-choice ${checked ? "selected" : ""} ${expectedOption ? "exam-choice-correct" : wrongOption ? "exam-choice-incorrect" : ""}`}
+              className={`exam-choice ${checked ? "selected" : ""} ${showVerdict ? (expectedOption ? "exam-choice-correct" : wrongOption ? "exam-choice-incorrect" : "") : ""}`}
               key={o.value}
             >
               <input
@@ -1211,7 +1237,7 @@ function ExamSession({
               <span>
                 <HtmlContent html={o.content} item={item} />
               </span>
-              {(expectedOption || wrongOption) && (
+              {showVerdict && (expectedOption || wrongOption) && (
                 <span className="exam-choice-verdict">
                   {expectedOption
                     ? checked

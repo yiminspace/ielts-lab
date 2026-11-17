@@ -379,3 +379,75 @@ for (const width of [1440, 390]) {
     await expect(player).toHaveJSProperty("paused", true);
   });
 }
+
+for (const width of [1440, 390]) {
+  test(`review answers start blurred and toggle independently at ${width}px`, async ({
+    page,
+  }) => {
+    await page.route("**/api/items/demo-listening", async (route) => {
+      const response = await route.fetch();
+      const item = await response.json();
+      const second = structuredClone(questions[0]);
+      second.questionJson.startIndex = 21;
+      second.questionJson.endIndex = 22;
+      item.data.questions = [questions[0], second];
+      await route.fulfill({ json: item });
+    });
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/#/item/demo-listening");
+    await page.getByRole("button", { name: "交卷检查", exact: true }).click();
+    await page.getByRole("button", { name: "确认交卷", exact: true }).click();
+    const first = page.locator(".exam-choice-question").first();
+    const second = page.locator(".exam-choice-question").nth(1);
+    const toggle = first.getByRole("button", {
+      name: "显示第 11–12 题答案",
+      exact: true,
+    });
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await expect(toggle.locator("strong")).toHaveCSS("filter", "blur(5px)");
+    await expect(toggle.locator("strong")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    await expect(
+      first.locator(".exam-choice-correct, .exam-choice-verdict"),
+    ).toHaveCount(0);
+    await toggle.click();
+    const hide = first.getByRole("button", {
+      name: "隐藏第 11–12 题答案",
+      exact: true,
+    });
+    await expect(hide).toHaveAttribute("aria-pressed", "true");
+    await expect(hide.locator("strong")).toHaveText("A, B");
+    await expect(hide.locator("strong")).toHaveCSS("filter", "none");
+    await expect(first.locator(".exam-choice-correct")).toHaveCount(2);
+    await expect(
+      second.locator(".exam-choice-correct, .exam-choice-verdict"),
+    ).toHaveCount(0);
+    await hide.press("Space");
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await expect(
+      first.locator(".exam-choice-correct, .exam-choice-verdict"),
+    ).toHaveCount(0);
+    await toggle.press("Enter");
+    await expect(hide).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator(".practice-frame")).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(width);
+    await page.screenshot({
+      path: `test-results/answer-revealed-${width}.png`,
+      fullPage: true,
+    });
+    await hide.click();
+    await page.screenshot({
+      path: `test-results/answer-concealed-${width}.png`,
+      fullPage: true,
+    });
+    await page.reload();
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await expect(
+      first.locator(".exam-choice-correct, .exam-choice-verdict"),
+    ).toHaveCount(0);
+  });
+}
