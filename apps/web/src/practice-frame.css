@@ -277,7 +277,7 @@
   display: none;
 }
 .practice-frame.pf-compact .pf-identity > .material-difficulty {
-  display: block;
+  display: inline-flex;
 }
 .practice-frame.pf-compact .pf-status,
 .practice-frame.pf-compact .pf-header-actions {

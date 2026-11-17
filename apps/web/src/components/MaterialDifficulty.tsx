@@ -4,6 +4,7 @@ export default function MaterialDifficulty({ item }: { item: LibraryItem }) {
   return (
     <span
       className="material-difficulty"
+      data-difficulty={item.difficulty ?? "unknown"}
       title="沿用归档的原始难度值，0–3 的中文等级含义尚待核实。"
     >
       {item.difficulty === undefined

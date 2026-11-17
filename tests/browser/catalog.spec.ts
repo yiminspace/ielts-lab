@@ -66,7 +66,7 @@ test("material rows retain practice count and latest result across refresh and m
 test("difficulty labels appear in catalog and detail across refresh and mobile", async ({
   page,
   context,
-}) => {
+}, testInfo) => {
   if (fixture.hosted) await seedIdentity(context);
   await page.route("**/api/library", async (route) => {
     const response = await route.fetch();
@@ -75,6 +75,14 @@ test("difficulty labels appear in catalog and detail across refresh and mobile",
       (item: { id: string }) => item.id === "demo-listening",
     );
     listening.difficulty = 0;
+    library.items.push(
+      ...[1, 2, 3, undefined].map((difficulty, index) => ({
+        ...listening,
+        id: `original-difficulty-${index}`,
+        title: `Original difficulty fixture ${index + 1}`,
+        difficulty,
+      })),
+    );
     await route.fulfill({ response, json: library });
   });
   await page.route("**/api/items/demo-listening", async (route) => {
@@ -87,16 +95,41 @@ test("difficulty labels appear in catalog and detail across refresh and mobile",
   await page.goto("/#/library/listening");
   const row = page.locator(".material-row").filter({ hasText: "雅思哥难度 0" });
   await expect(row).toHaveCount(1);
+  const badges = page.locator(".material-row .material-difficulty");
+  await expect(badges).toHaveCount(5);
+  const colors = await badges.evaluateAll((elements) =>
+    elements.map((element) => getComputedStyle(element).backgroundColor),
+  );
+  expect(new Set(colors).size).toBe(5);
+  await row.locator(".material-main").focus();
+  await expect(row.locator(".material-main")).toBeFocused();
+  await page.screenshot({
+    path: testInfo.outputPath("difficulty-desktop.png"),
+    animations: "disabled",
+    fullPage: true,
+  });
   await page.reload();
   await expect(row).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(row.getByText("雅思哥难度 0", { exact: true })).toBeVisible();
+  for (const badge of await badges.all()) {
+    await expect(badge).toBeVisible();
+  }
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+  await page.screenshot({
+    path: testInfo.outputPath("difficulty-mobile.png"),
+    animations: "disabled",
+    fullPage: true,
+  });
   await page.setViewportSize({ width: 1440, height: 900 });
   await row.locator(".material-main").click();
   const practiceDifficulty = page
     .locator(".pf-identity")
     .getByText("雅思哥难度 0", { exact: true });
   await expect(practiceDifficulty).toBeVisible();
+  await expect(practiceDifficulty).toHaveCSS("background-color", colors[0]);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(practiceDifficulty).toBeVisible();
   await page.reload();
